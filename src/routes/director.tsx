@@ -197,7 +197,7 @@ function Console({ pass, onPass }: { pass: string; onPass: (p: string) => void }
 
       <Panel className="mt-4" title="Results matrix" icon={<Table2 className="h-4 w-4" />} action={
         <div className="flex items-center gap-2"><select aria-label="Round" className="field w-auto" value={d.viewRound} onChange={(e) => setViewRound(Number(e.target.value))}>{d.rounds.map((r) => <option key={r} value={r}>Round {r}</option>)}</select><Btn variant="ghost" className="px-2" title="Remove selected round" aria-label="Remove selected round" disabled={d.viewRound === s.round} onClick={() => confirm(`Remove Round ${d.viewRound} from scorecards? Saved marks remain retained.`) && act(async () => { await remove({ data: { passcode: pass, round: d.viewRound } }); setViewRound(undefined); })}><Trash2 className="h-4 w-4" /></Btn></div>}>
-        <Matrix students={d.students} results={d.results} sat={s.satEnabled || d.results.some((r) => r.subject === "SAT")} round={d.viewRound} onReset={(stream) => confirm(`Reset all ${stream} results for Round ${d.viewRound}? Every score shows "—" again. This cannot be undone.`) && act(() => resetResults({ data: { passcode: pass, round: d.viewRound, stream: stream as "Natural Science" } }))} />
+        <Matrix students={d.students} results={d.results} sat={s.satEnabled || d.results.some((r) => r.subject === "SAT")} round={d.viewRound} onReset={(stream) => confirm(`Reset all ${stream} results for Round ${d.viewRound}? Their marks are deleted everywhere (Director, teacher, student result page and Telegram) and they can take the exam again. This cannot be undone.`) && act(() => resetResults({ data: { passcode: pass, round: d.viewRound, stream: stream as "Natural Science" } }))} />
       </Panel>
     </Shell>
   );

@@ -14,31 +14,41 @@ export class TelegramError extends Error {
   constructor(message: string, readonly code: number) { super(message); }
 }
 
-/** Calls the Telegram Bot API through the connector gateway. */
+/** Calls the Telegram Bot API: directly with TELEGRAM_BOT_TOKEN, otherwise through the connector gateway. */
 export async function tg<T = unknown>(method: string, body: Record<string, unknown> = {}): Promise<T> {
-  const lovableKey = process.env["LOVABLE_API_KEY"];
-  const telegramKey = process.env["TELEGRAM_API_KEY"];
-  if (!lovableKey) throw new Error("LOVABLE_API_KEY is not configured");
-  if (!telegramKey) throw new Error("TELEGRAM_API_KEY is not configured");
-  const res = await fetch(`${GATEWAY_URL}/${method}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${lovableKey}`, "X-Connection-Api-Key": telegramKey, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const botToken = process.env["TELEGRAM_BOT_TOKEN"];
+  let res: Response;
+  if (botToken) {
+    res = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } else {
+    const lovableKey = process.env["LOVABLE_API_KEY"];
+    const telegramKey = process.env["TELEGRAM_API_KEY"];
+    if (!lovableKey) throw new Error("LOVABLE_API_KEY is not configured");
+    if (!telegramKey) throw new Error("The Telegram bot is not connected yet.");
+    res = await fetch(`${GATEWAY_URL}/${method}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${lovableKey}`, "X-Connection-Api-Key": telegramKey, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
   const text = await res.text();
   let json: { ok?: boolean; result?: T; description?: string; error_code?: number } = {};
   try { json = JSON.parse(text); } catch { /* not JSON */ }
   if (!res.ok || !json.ok) {
-    console.error(`Telegram ${method} failed [${res.status}]: ${text}`);
-    throw new TelegramError(json.description ?? `Telegram request failed [${res.status}]: ${text.slice(0, 200)}`, json.error_code ?? res.status);
+    console.error(`Telegram ${method} failed [${res.status}]: ${json.description ?? res.statusText}`);
+    throw new TelegramError(json.description ?? `Telegram request failed [${res.status}]`, json.error_code ?? res.status);
   }
   return json.result as T;
 }
 
-/** Secret Telegram sends back on every update; derived from the connection key so both sides agree. */
+/** Secret Telegram sends back on every update; derived from the bot credential so both sides agree. */
 export async function webhookSecret() {
-  const key = process.env["TELEGRAM_API_KEY"];
-  if (!key) throw new Error("TELEGRAM_API_KEY is not configured");
+  const key = process.env["TELEGRAM_BOT_TOKEN"] ?? process.env["TELEGRAM_API_KEY"];
+  if (!key) throw new Error("The Telegram bot is not connected yet.");
   const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`telegram-webhook:${key}`)));
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }

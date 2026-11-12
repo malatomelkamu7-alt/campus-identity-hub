@@ -540,7 +540,7 @@ export const directorRemove = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-/** Clears the subject scores shown in the results matrix for one round and stream (shown as "—"). Exam attempts stay as they are. */
+/** Deletes one round's finished attempts and subject results for a stream, so marks vanish everywhere and those students can sit the exam again. */
 export const directorResetResults = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ passcode: pass, round: z.number().int().min(1), stream: z.enum(["Natural Science", "Social Science"]) }).parse(d))
   .handler(async ({ data }) => {
