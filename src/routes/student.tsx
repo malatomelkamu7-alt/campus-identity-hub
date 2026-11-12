@@ -300,8 +300,7 @@ function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void 
     return () => { window.removeEventListener("offline", down); window.removeEventListener("online", up); };
   }, []);
 
-  useEffect(() => {
-    load({ data: who }).then((p) => {
+  const openExam = () => load({ data: who }).then((p) => {
       setErr("");
       backupKey.current = `bh-exam-backup-${p.attemptId}`;
       let saved: { answers?: Record<string, number>; idx?: number } = {};
@@ -310,9 +309,17 @@ function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void 
       // Fetch every picture now so they still show if the internet drops later in the exam.
       p.paper.forEach((q) => { if (q.figureUrl) { const img = new Image(); img.src = q.figureUrl; } });
       setPaper(p); setAnswers({ ...p.answers, ...(saved.answers ?? {}) }); setIdx(startAt); setViolations(p.violations); setLeft(p.secondsLeft); setPaused(p.paused); setPauseReason(p.pauseReason);
-      if (p.attemptStatus === "blocked") setEnded("blocked"); else if (p.attemptStatus === "submitted") setEnded("submitted");
-    }).catch((e) => setErr(e instanceof Error ? e.message : "Could not load the exam."));
-  }, []);
+      const end = p.attemptStatus === "blocked" ? "blocked" : p.attemptStatus === "submitted" ? "submitted" : null;
+      endedRef.current = end; setEnded(end);
+      return p;
+    });
+  useEffect(() => { openExam().catch((e) => setErr(e instanceof Error ? e.message : "Could not load the exam.")); }, []);
+  // A blocked student waits here; when the Director re-admits them the exam opens again by itself.
+  useEffect(() => {
+    if (ended !== "blocked") return;
+    const t = setInterval(() => { openExam().catch(() => { /* keep waiting */ }); }, 4000);
+    return () => clearInterval(t);
+  }, [ended]);
   useEffect(() => { const t = setInterval(() => { if (!pausedRef.current && !offlineRef.current) setLeft((l) => Math.max(0, l - 1)); }, 1000); return () => clearInterval(t); }, []);
   useEffect(() => { const t = setInterval(() => push(), HEARTBEAT_MS); return () => clearInterval(t); }, []);
   useEffect(() => { if (paper && left === 0 && !ended && !offline) push(); }, [left, paper]);
@@ -358,7 +365,7 @@ function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void 
       <div className="glass max-w-md p-8 text-center">
         {ended === "blocked" ? <AlertTriangle className="mx-auto h-12 w-12 text-destructive" /> : <ShieldCheck className="mx-auto h-12 w-12 text-accent" />}
         <h1 className="mt-4 text-2xl font-bold">{ended === "blocked" ? "You have been removed from the exam" : ended === "timeup" ? "Time is up!" : "Exam submitted"}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{ended === "blocked" ? "You left the exam screen more than 3 times. Your answers were submitted. Only the Director can re-admit you." : "Your answers are sealed. Scores appear in “My results” once the Director publishes them."}</p>
+        <p className="mt-2 text-sm text-muted-foreground">{ended === "blocked" ? "You left the exam screen more than 3 times. Your answers were saved. Only the Director can re-admit you — keep this page open and your exam opens again here as soon as you are re-admitted." : "Your answers are sealed. Scores appear in “My results” once the Director publishes them."}</p>
         <Btn className="mt-6" onClick={onExit}>Back to portal</Btn>
       </div>
     </div>

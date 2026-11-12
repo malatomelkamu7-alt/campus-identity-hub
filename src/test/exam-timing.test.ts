@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canStartExam, personalDeadline, remainingSeconds } from '../lib/exam-timing';
+import { canStartExam, personalDeadline, readmitDeadline, remainingSeconds } from '../lib/exam-timing';
 
 describe('individual exam timing', () => {
   it('gives students starting ten minutes apart the same full duration', () => {
@@ -18,5 +18,13 @@ describe('individual exam timing', () => {
   });
   it('never resets an expired personal countdown', () => {
     expect(remainingSeconds('2026-10-25T07:00:00Z', Date.parse('2026-10-25T07:01:00Z'))).toBe(0);
+  });
+  it('gives a re-admitted student back the 25 minutes they had left when blocked', () => {
+    const t = Date.parse('2026-10-25T07:30:00Z');
+    expect(readmitDeadline('2026-10-25T07:00:00Z', '2026-10-25T06:35:00Z', t, 3600)).toBe('2026-10-25T07:55:00.000Z');
+  });
+  it('gives a re-admitted student at least one minute', () => {
+    const t = Date.parse('2026-10-25T07:30:00Z');
+    expect(readmitDeadline('2026-10-25T07:00:00Z', '2026-10-25T07:00:00Z', t, 3600)).toBe('2026-10-25T07:31:00.000Z');
   });
 });

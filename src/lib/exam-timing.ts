@@ -6,6 +6,12 @@ export function personalDeadline(startedAt: string, durationSec: number, extensi
   return new Date(Date.parse(startedAt) + (durationSec + extensionSec) * 1000).toISOString();
 }
 
+/** A re-admitted student gets back the time they still had when they were blocked (never less than a minute). */
+export function readmitDeadline(deadlineAt: string | null, blockedAt: string | null, time: number, fallbackSec: number) {
+  const left = deadlineAt && blockedAt ? Math.ceil((Date.parse(deadlineAt) - Date.parse(blockedAt)) / 1000) : fallbackSec;
+  return new Date(time + Math.max(60, left) * 1000).toISOString();
+}
+
 export function remainingSeconds(deadline: string | null, time = Date.now()) {
   return deadline ? Math.max(0, Math.ceil((Date.parse(deadline) - time) / 1000)) : 0;
 }

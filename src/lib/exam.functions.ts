@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { teacherStream, canTakeStream, teacherCredentialKey, RESULT_PIN, hashResultPin, uploadSubjects } from "@/lib/admin-rules";
-import { canStartExam, personalDeadline, remainingSeconds, DISCONNECT_GRACE_SEC, admittedToRoom, activeBankIds, HELP_COOLDOWN_SEC, helpMessage } from "@/lib/exam-timing";
+import { canStartExam, personalDeadline, readmitDeadline, remainingSeconds, DISCONNECT_GRACE_SEC, admittedToRoom, activeBankIds, HELP_COOLDOWN_SEC, helpMessage } from "@/lib/exam-timing";
 import { normalizeName, requirePasscode, shouldBlock, shuffle, subjectsFor } from "@/lib/identity";
 import { FIGURE_PATH, MAX_OPTION, MAX_PASSAGE, MAX_TEXT, MAX_PAPER_PAGES, groupByPassage } from "@/lib/paper";
 
@@ -256,9 +256,20 @@ export const directorReadmit = createServerFn({ method: "POST" })
     const sb = await admin();
     const s = await settings();
     if (!activeBankIds(s).length) throw new Error("No active exam.");
-    const { error } = await sb.from("exam_attempts").update({ status: "in_progress", violations: 0, submitted_at: null, paused_at: null, pause_reason: null, last_seen_at: now(), deadline_at: personalDeadline(now(), s.duration_sec, s.extension_sec) })
+    if (!s.exam_live) throw new Error("Open the exam session first, then re-admit the student.");
+    const { data: rows } = await sb.from("exam_attempts").select("id,bank_id,deadline_at,submitted_at")
       .eq("round", s.current_round).in("bank_id", activeBankIds(s)).eq("student_code", data.studentCode).eq("status", "blocked");
-    if (error) throw new Error("Could not re-admit this student.");
+    if (!rows?.length) throw new Error("This student is not blocked — they may already be re-admitted.");
+    const t = Date.now();
+    for (const a of rows) {
+      // Back to writing with the time they still had, warnings cleared and the blocked mark removed.
+      // The timer waits (pause_reason 'readmit') until the student's screen opens the exam again.
+      const { error } = await sb.from("exam_attempts").update({ status: "in_progress", violations: 0, score: null, total: null, submitted_at: null, paused_at: now(), pause_reason: "readmit", last_seen_at: now(), deadline_at: readmitDeadline(a.deadline_at, a.submitted_at, t, s.duration_sec + s.extension_sec) })
+        .eq("id", a.id).eq("status", "blocked");
+      if (error) throw new Error("Could not re-admit this student.");
+      const { data: bank } = await sb.from("question_banks").select("subject").eq("id", a.bank_id).maybeSingle();
+      if (bank) await sb.from("round_results").delete().eq("round", s.current_round).eq("student_code", data.studentCode).eq("subject", bank.subject);
+    }
     await sb.from("exam_events").insert({ kind: "readmit", student_code: data.studentCode, round: s.current_round, message: "Re-admitted by the Director" });
     return { ok: true };
   });
@@ -397,6 +408,12 @@ export const studentExam = createServerFn({ method: "POST" })
         att = existing.data;
       } else att = ins.data;
       await sb.from("exam_events").insert({ kind: "start", student_code: st.student_code, round: s.current_round, message: `Started ${bank.title}` });
+    }
+    if (att.status === "in_progress" && att.pause_reason === "readmit" && att.paused_at) {
+      // Re-admitted by the Director: the clock starts again now that the student is back on the exam.
+      const deadline = att.deadline_at ? new Date(Date.parse(att.deadline_at) + Math.max(0, Date.now() - Date.parse(att.paused_at))).toISOString() : att.deadline_at;
+      await sb.from("exam_attempts").update({ paused_at: null, pause_reason: null, deadline_at: deadline, last_seen_at: now() }).eq("id", att.id).eq("pause_reason", "readmit");
+      att = { ...att, paused_at: null, pause_reason: null, deadline_at: deadline };
     }
     if (att.status === "in_progress") await sb.from("exam_attempts").update({ last_seen_at: now() }).eq("id", att.id);
     const left = attemptLeft(att);
