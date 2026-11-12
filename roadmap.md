@@ -54,8 +54,10 @@
 - [x] Exam Help button sends the student name, ID and class to the Director
 - [x] Paper import keeps formulas/symbols, reading passages and graphs/diagrams/tables; exam screen shows them
 - [x] Telegram bot: name sign-in, My Result (ID + passcode), Profile, Help, status notices; IT Admin bot page with live counters, users, help inbox, announcements and settings
-- [ ] Link the Telegram bot to this project, then press "Reconnect bot" on the published IT Admin page (waiting on the user)
+- [x] Connect the Telegram bot (bot token) to the live site
 - [x] Face verification: fixed Retake camera, clearer messages, reliable duplicate-face check
 - [x] Staff passwords set (Director, IT Admin, shared teacher password)
 - [x] Published and pointed the Vercel proxy at this project's live site
 - [ ] Point the Vercel project at this repository (waiting on the user)
+- [x] Back to Round 1; Director reset deletes results everywhere so students can retake
+- [x] Show the school logo (browser icon and link previews) on the Vercel site
