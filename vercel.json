@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "echo skip-install",
+  "buildCommand": "mkdir -p vercel-proxy && echo ok > vercel-proxy/.keep",
+  "outputDirectory": "vercel-proxy",
+  "rewrites": [
+    { "source": "/", "destination": "https://ashacute.lovable.app/" },
+    { "source": "/:path*", "destination": "https://ashacute.lovable.app/:path*" }
+  ]
+}

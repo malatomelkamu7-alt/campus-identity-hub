@@ -1,0 +1,11 @@
+# src/lib notes
+
+- Mathematics teachers may also upload and view SAT papers (`uploadSubjects`); a paper's `target_stream` comes from the teacher, so a Social Science teacher's SAT reaches only Social Science students.
+- One active paper per stream: `exam_settings.active_bank_id` (Natural) and `social_bank_id` (Social) can be live together; every exam call resolves the student's paper by stream.
+- Student devices heartbeat every `HEARTBEAT_MS`; the client freezes its timer the instant it detects offline and reports `connectionLost` on reconnect, and the server freezes the attempt at `last_seen_at` so no time is lost.
+- Teacher paper import: the browser turns PDFs/photos into page pictures (pdfjs) and .docx into text + embedded pictures (mammoth), `teacherScanPaper` reads them via `src/lib/paper.server.ts`; formulas come back as `$…$` LaTeX (KaTeX + mhchem via `MathText`), shared passages as `passage`, and figures are cut client-side from the model's page boxes and stored in the private `question-figures` bucket (paths in `figure`, served by short-lived signed links). `normalizeScanned` keeps an answer only with proof on the paper.
+- The exam screen never uses native prompt/confirm/alert (they drop browsers out of fullscreen); it uses in-page dialogs and the cross-browser helpers in `src/lib/fullscreen.ts`, re-entering fullscreen on any tap until the exam ends.
+- Exam Help requests are `exam_events` rows of kind `help` (one per student per `HELP_COOLDOWN_SEC`), pinned to the top of the Director's alerts.
+- With `auto_close` on, `directorUpdate`/`directorClock` refuse a manual close of a live session; the Director only opens it.
+- Telegram bot: Telegram calls `/api/public/telegram/webhook` (secret header derived from the connection key); conversation state lives in `telegram_users`, logs/help requests in `telegram_messages` (update_id makes deliveries idempotent, result passcodes are never logged), all server-only via the gateway in `telegram.server.ts`. Status notices are claimed by compare-and-set on `telegram_settings.last_*` so each change is announced once, from any caller. The bot never shows a student ID until that chat passes ID + result passcode.
+- Face checks (uncovered face, duplicate face) run at registration through the AI gateway in `src/lib/face.server.ts`.
