@@ -55,4 +55,3 @@ use the editor.
 - `hidden_staff_roles` hides staff pages from the home page and menus via `visibleRoles`; staff links render only after the setting loads, and direct links keep working.
 - `apply_exam_schedule` closes when every admitted student finished (`auto_close`, sets `auto_completed`); in Auto its close time only ends new starts and the session stays live while attempts are in progress, so extended or paused students are never cut off.
 - Vercel only proxies to the Lovable-published site (`vercel.json`); Cloud server keys can't leave Lovable.
-- Director re-admit of a blocked attempt restores the time left at blocking (`readmitDeadline`), clears warnings, score and that subject's round result, and parks it as `pause_reason='readmit'`; `studentExam` restarts the clock when the student's screen reopens, so a re-admitted student is never cut off or marked disconnected while walking back.
