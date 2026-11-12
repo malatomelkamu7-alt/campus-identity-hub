@@ -41,7 +41,7 @@
 
 - [x] Move project to this Lovable Cloud (schema, school list, photo storage, passwords)
 - [x] Teacher paper import: PDF, Word, photo or text read into question banks automatically
-- [ ] Import existing data from the old project (waiting on table exports from the user)
+- [x] Import existing data from the old project (school list, student, papers, attempts, alerts, settings, Telegram history)
 - [x] IT Admin PIN saved
 - [x] IT Admin: filter by Natural Science section (A/B) and Social Science
 - [x] Scroll helper button on every page; premium dropdown borders and header
@@ -54,4 +54,8 @@
 - [x] Exam Help button sends the student name, ID and class to the Director
 - [x] Paper import keeps formulas/symbols, reading passages and graphs/diagrams/tables; exam screen shows them
 - [x] Telegram bot: name sign-in, My Result (ID + passcode), Profile, Help, status notices; IT Admin bot page with live counters, users, help inbox, announcements and settings
-- [ ] Publish, then press "Reconnect bot" on the published IT Admin page so the bot uses the live site
+- [ ] Link the Telegram bot to this project, then press "Reconnect bot" on the published IT Admin page (waiting on the user)
+- [x] Face verification: fixed Retake camera, clearer messages, reliable duplicate-face check
+- [x] Staff passwords set (Director, IT Admin, shared teacher password)
+- [x] Published and pointed the Vercel proxy at this project's live site
+- [ ] Point the Vercel project at this repository (waiting on the user)

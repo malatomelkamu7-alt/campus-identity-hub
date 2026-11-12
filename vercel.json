@@ -5,7 +5,7 @@
   "buildCommand": "mkdir -p vercel-proxy && echo ok > vercel-proxy/.keep",
   "outputDirectory": "vercel-proxy",
   "rewrites": [
-    { "source": "/", "destination": "https://ashacute.lovable.app/" },
-    { "source": "/:path*", "destination": "https://ashacute.lovable.app/:path*" }
+    { "source": "/", "destination": "https://campus-identity-hub.lovable.app/" },
+    { "source": "/:path*", "destination": "https://campus-identity-hub.lovable.app/:path*" }
   ]
 }

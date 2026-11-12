@@ -1,17 +1,89 @@
 {
-  "source": "code-archive (ashacute-main.zip, Lovable TanStack project) + 9 CSV table exports",
-  "capabilities": [
-    {"capability": "code", "source": "src/ routes index, director, it-admin, teacher, student, telegram webhook", "outcome": "migrate", "status": "pending", "next_action": "copy and build"},
-    {"capability": "schema", "source": "drizzle/migrations 0000-0002", "outcome": "migrate", "status": "pending", "next_action": "apply to Lovable Cloud"},
-    {"capability": "records", "source": "CSV exports: school_roster, registered_students, question_banks, exam_settings, exam_attempts, exam_events, telegram_*", "outcome": "migrate", "status": "pending", "next_action": "sanitize + import"},
-    {"capability": "records: round_results, staff_credentials, exam_rounds, telegram_broadcasts", "source": "old Cloud", "outcome": "migrate", "status": "pending", "next_action": "not exported; staff passwords re-set from user-given PINs"},
-    {"capability": "storage: student-photos, question-figures", "source": "old Cloud storage", "outcome": "migrate", "status": "pending", "next_action": "create buckets; only student had no photo (face_verified=false)"},
-    {"capability": "auth identities", "source": "none (staff PINs, students name+ID+session token)", "outcome": "not_applicable", "status": "verified", "next_action": "none"},
-    {"capability": "secrets", "source": "DIRECTOR_PASSCODE, TEACHER_PASSCODE, IT_ADMIN_PASSCODE", "outcome": "migrate", "status": "pending", "next_action": "set from values user gave"},
-    {"capability": "AI face checks + paper scan", "source": "Lovable AI gateway", "outcome": "preserve", "status": "pending", "next_action": "harden + verify"},
-    {"capability": "schedule: auto open/close", "source": "pg_cron in migration", "outcome": "migrate", "status": "pending", "next_action": "comes with schema"},
-    {"capability": "telegram bot webhook", "source": "/api/public/telegram/webhook via connector", "outcome": "preserve", "status": "pending", "next_action": "needs Telegram connector linked + publish"},
-    {"capability": "Vercel deployment", "source": "vercel.json proxy to ashacute.lovable.app", "outcome": "migrate", "status": "pending", "next_action": "point proxy at this project's published URL"},
-    {"capability": "verification", "source": "-", "outcome": "migrate", "status": "pending", "next_action": "end-to-end checks"}
-  ]
+ "source": "code-archive (ashacute-main.zip, Lovable TanStack project) + 9 CSV table exports",
+ "capabilities": [
+  {
+   "capability": "code",
+   "source": "src/ routes index, director, it-admin, teacher, student, telegram webhook",
+   "outcome": "migrate",
+   "status": "verified",
+   "next_action": "none"
+  },
+  {
+   "capability": "schema",
+   "source": "drizzle/migrations 0000-0002",
+   "outcome": "migrate",
+   "status": "verified",
+   "next_action": "none"
+  },
+  {
+   "capability": "records",
+   "source": "CSV exports: school_roster, registered_students, question_banks, exam_settings, exam_attempts, exam_events, telegram_*",
+   "outcome": "migrate",
+   "status": "verified",
+   "next_action": "all 9 CSV tables imported, counts match"
+  },
+  {
+   "capability": "records: round_results, staff_credentials, exam_rounds, telegram_broadcasts",
+   "source": "old Cloud",
+   "outcome": "migrate",
+   "status": "verified",
+   "next_action": "round_results empty because every attempt was reset; staff passwords set from user's PINs"
+  },
+  {
+   "capability": "storage: student-photos, question-figures",
+   "source": "old Cloud storage",
+   "outcome": "migrate",
+   "status": "verified",
+   "next_action": "buckets created; the one registered student had no photo"
+  },
+  {
+   "capability": "auth identities",
+   "source": "none (staff PINs, students name+ID+session token)",
+   "outcome": "not_applicable",
+   "status": "verified",
+   "next_action": "none"
+  },
+  {
+   "capability": "secrets",
+   "source": "DIRECTOR_PASSCODE, TEACHER_PASSCODE, IT_ADMIN_PASSCODE",
+   "outcome": "migrate",
+   "status": "verified",
+   "next_action": "Director, IT Admin, teacher passwords set and sign-in tested"
+  },
+  {
+   "capability": "AI face checks + paper scan",
+   "source": "Lovable AI gateway",
+   "outcome": "preserve",
+   "status": "verified",
+   "next_action": "face registration, retake, duplicate block tested end to end; paper scan not exercised"
+  },
+  {
+   "capability": "schedule: auto open/close",
+   "source": "pg_cron in migration",
+   "outcome": "migrate",
+   "status": "pending",
+   "next_action": "comes with schema"
+  },
+  {
+   "capability": "telegram bot webhook",
+   "source": "/api/public/telegram/webhook via connector",
+   "outcome": "preserve",
+   "status": "pending",
+   "next_action": "user links Telegram connection to this project, then Reconnect bot"
+  },
+  {
+   "capability": "Vercel deployment",
+   "source": "vercel.json proxy to ashacute.lovable.app",
+   "outcome": "migrate",
+   "status": "pending",
+   "next_action": "vercel.json now proxies to campus-identity-hub.lovable.app; user points Vercel at this repo"
+  },
+  {
+   "capability": "verification",
+   "source": "-",
+   "outcome": "migrate",
+   "status": "verified",
+   "next_action": "director/IT admin/teacher/student sign-in, registration, results lock tested; test rows removed"
+  }
+ ]
 }
