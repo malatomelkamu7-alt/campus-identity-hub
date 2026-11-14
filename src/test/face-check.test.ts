@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseJson, uncoveredVerdict, isDuplicate, COVERED_MSG, NO_FACE_MSG, UNCLEAR_MSG } from "@/lib/face.server";
+import { parseJson, uncoveredVerdict, isDuplicate, isSamePerson, COVERED_MSG, NO_FACE_MSG, UNCLEAR_MSG } from "@/lib/face.server";
 
 describe("face verification rules", () => {
   it("passes one clear, uncovered face", () => {
@@ -27,5 +27,16 @@ describe("face verification rules", () => {
     expect(isDuplicate({ match_index: null, confidence: 0 }, 3)).toBe(false);
     expect(isDuplicate({ match_index: 0, confidence: 1 }, 3)).toBe(false);
     expect(isDuplicate({ match_index: 5, confidence: 1 }, 3)).toBe(false);
+  });
+  it("reads labelled screening answers like R3", () => {
+    expect(isDuplicate({ match: "R3", confidence: 0.9 }, 3)).toBe(true);
+    expect(isDuplicate({ match: "R4", confidence: 0.9 }, 3)).toBe(false);
+    expect(isDuplicate({ match: null, confidence: 0.9 }, 3)).toBe(false);
+  });
+  it("blocks registration only when the one-to-one check is very sure", () => {
+    expect(isSamePerson({ same_person: true, confidence: 0.95 })).toBe(true);
+    expect(isSamePerson({ same_person: true, confidence: 0.85 })).toBe(false);
+    expect(isSamePerson({ same_person: false, confidence: 0.99 })).toBe(false);
+    expect(isSamePerson({ same_person: true })).toBe(false);
   });
 });

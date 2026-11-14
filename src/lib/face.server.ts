@@ -64,21 +64,61 @@ export async function checkUncovered(dataUrl: string) {
   if (verdict) throw new Error(verdict);
 }
 
-/** Decides whether a duplicate-check reply means the new face matches a registered one. */
-export function isDuplicate(r: Record<string, unknown>, batchSize: number): boolean {
-  const idx = num(r["match_index"]);
+/**
+ * Decides whether a group screening reply names a possible match inside the batch.
+ * Photos are labelled R1..Rn, so the reply's label maps straight to a photo (1-based index, or null).
+ */
+export function screenMatch(r: Record<string, unknown>, batchSize: number): number | null {
+  const raw = r["match"] ?? r["match_index"];
+  const idx = typeof raw === "string" ? Number(raw.trim().replace(/^R/i, "")) : num(raw);
   const conf = num(r["confidence"]);
-  return Number.isInteger(idx) && idx >= 1 && idx <= batchSize && (Number.isNaN(conf) ? true : conf >= 0.8);
+  return Number.isInteger(idx) && idx >= 1 && idx <= batchSize && (Number.isNaN(conf) ? true : conf >= 0.8) ? idx : null;
+}
+/** True when the screening reply names a possible match. */
+export const isDuplicate = (r: Record<string, unknown>, batchSize: number) => screenMatch(r, batchSize) !== null;
+
+/** A one-to-one confirmation only counts when the model is very sure it is the same person. */
+export function isSamePerson(r: Record<string, unknown>): boolean {
+  const conf = num(r["confidence"]);
+  return yes(r["same_person"]) && !Number.isNaN(conf) && conf >= 0.9;
 }
 
-/** Throws if the new face matches any of the registered photos (data URLs). */
+const PAIR_PROMPT = 'You are checking a school exam registration. Classmates are the same age, often the same ethnicity, wear the same uniform and are photographed with the same webcam, so different students can look alike. Compare face photo A with face photo B one feature at a time: face shape and jaw, eyebrows, eye shape and spacing, nose, lips, ears, skin marks. Ignore clothing, hair, head scarf, glasses, lighting, angle and background. Say same_person = true only if you are certain both photos show the very same individual; if in any doubt, answer false. Reply only as json: {"differences": string, "same_person": boolean, "confidence": number between 0 and 1}.';
+
+/** Confirms a possible match with two independent one-to-one comparisons (both image orders). */
+async function confirmSame(newPhoto: string, registered: string) {
+  const one = (a: string, b: string) => ask([
+    { type: "text", text: PAIR_PROMPT },
+    { type: "text", text: "Photo A:" },
+    { type: "image_url", image_url: { url: a } },
+    { type: "text", text: "Photo B:" },
+    { type: "image_url", image_url: { url: b } },
+  ]).then(isSamePerson);
+  const [x, y] = await Promise.all([one(newPhoto, registered), one(registered, newPhoto)]);
+  return x && y;
+}
+
+/**
+ * Throws if the new face matches any registered photo (data URLs).
+ * Group screening finds candidates fast; a candidate only blocks registration
+ * when two careful one-to-one checks both agree it is the same person.
+ */
 export async function checkNotDuplicate(dataUrl: string, existing: string[]) {
   const batches: string[][] = [];
   for (let i = 0; i < existing.length; i += BATCH) batches.push(existing.slice(i, i + BATCH));
-  const results = await Promise.all(batches.map((batch) => ask([
-    { type: "text", text: `Image 0 is a new student. Images 1-${batch.length} are students who are already registered. Is the person in image 0 the same human being as the person in any of images 1-${batch.length}? Judge only by facial identity (face shape, eyes, nose, mouth), never by clothing, uniform, hairstyle, lighting or background; different people in the same school uniform are NOT a match. Reply only as json: {"match_index": number|null, "confidence": number between 0 and 1}.` },
-    { type: "image_url", image_url: { url: dataUrl } },
-    ...batch.map((url) => ({ type: "image_url" as const, image_url: { url } })),
-  ]).then((r) => isDuplicate(r, batch.length))));
+  const results = await Promise.all(batches.map(async (batch) => {
+    // Every photo gets a text label right before it, so the AI can never miscount positions.
+    const r = await ask([
+      { type: "text", text: `The photo labelled NEW is a student trying to register. The photos labelled R1 to R${batch.length} are students who are already registered. Is the person in NEW the same human being as the person in any R photo? Judge only by facial identity (face shape, eyes, nose, mouth), never by clothing, uniform, hairstyle, lighting or background; different people in the same school uniform are NOT a match. Reply only as json: {"match": "R1".."R${batch.length}" or null, "confidence": number between 0 and 1}.` },
+      { type: "text", text: "NEW:" },
+      { type: "image_url", image_url: { url: dataUrl } },
+      ...batch.flatMap((url, i) => [
+        { type: "text" as const, text: `R${i + 1}:` },
+        { type: "image_url" as const, image_url: { url } },
+      ]),
+    ]);
+    const idx = screenMatch(r, batch.length);
+    return idx === null ? false : confirmSame(dataUrl, batch[idx - 1]);
+  }));
   if (results.some(Boolean)) throw new Error(DUPLICATE_MSG);
 }
