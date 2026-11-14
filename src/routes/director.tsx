@@ -300,7 +300,7 @@ function ConnectionLost({ attempts, nameOf, live, onResume }: { attempts: ConnAt
     <p className="mb-3 text-xs text-muted-foreground">The moment a student's device loses power or internet, their exam is frozen — it is not submitted. Their answers, the question they were on and their time left are saved and the timer stops. You decide when they continue.</p>
     {!lost.length ? <p className="text-sm text-muted-foreground">Everyone is connected.</p> : <ul className="space-y-2 text-sm">
       {lost.map((a) => { const on = backOnline(a.last_seen_at, a.paused_at); return <li key={a.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 p-2">
-        <span className="min-w-0 flex-1 break-words">{nameOf(a.student_code)} <span className="font-mono text-xs text-muted-foreground">{a.student_code}</span></span>
+        <span className="min-w-[12rem] flex-1 break-words">{nameOf(a.student_code)} <span className="font-mono text-xs text-muted-foreground">{a.student_code}</span></span>
         <span className="text-xs text-muted-foreground">On question {a.current_question + 1} · lost at {a.paused_at ? new Date(a.paused_at).toLocaleTimeString() : "—"}</span>
         <span className="font-mono text-xs text-warning">{fmt(left(a))} left</span>
         <span className={`flex items-center gap-1 text-xs ${on ? "text-accent" : "text-muted-foreground"}`}>{on ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}{on ? "Back online" : "Still offline"}</span>
@@ -382,7 +382,7 @@ function StudentTime({ pass, live, attempts, nameOf, onAct }: { pass: string; li
       </div>
       <ul className="space-y-2 text-sm">
         {matches.map((a) => <li key={a.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-2">
-          <span className="min-w-0 flex-1 break-words">{nameOf(a.student_code)} <span className="font-mono text-xs text-muted-foreground">{a.student_code}</span></span>
+          <span className="min-w-[12rem] flex-1 break-words">{nameOf(a.student_code)} <span className="font-mono text-xs text-muted-foreground">{a.student_code}</span></span>
           <span className={`font-mono text-xs ${a.paused_at ? "text-warning" : "text-primary"}`}>{a.paused_at ? "Paused · " : ""}{fmt(left(a))} left</span>
           <Btn variant="ghost" className="py-1 text-xs" onClick={() => onAct(() => change({ data: { passcode: pass, attemptId: a.id, action: "extend", minutes: mins } }))}><Plus className="h-3.5 w-3.5" />Add {mins} min</Btn>
           {a.paused_at

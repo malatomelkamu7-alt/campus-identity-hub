@@ -78,7 +78,7 @@ export function Panel({ title, icon, children, className = "", action }: { title
     <section className={`glass p-4 sm:p-5 ${className}`}>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {icon && <span className="text-primary">{icon}</span>}
-        <h2 className="min-w-0 flex-1 break-words text-base font-semibold">{title}</h2>
+        <h2 className="min-w-[10rem] flex-1 break-words text-base font-semibold">{title}</h2>
         {action && <div className="ml-auto max-w-full">{action}</div>}
       </div>
       {children}

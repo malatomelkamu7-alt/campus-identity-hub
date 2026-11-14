@@ -90,8 +90,8 @@ function StudentPage() {
   return (
     <Shell title="Student Portal" subtitle="Burka Harbu Special Secondary School · Exam Portal" help>
       <div className="tile mb-4 flex flex-wrap items-center gap-3 sm:mb-6 sm:gap-5">
-        {student.photoUrl ? <img src={student.photoUrl} alt={student.name} className="h-16 w-16 rounded-2xl object-cover ring-2 ring-primary/50 glow sm:h-24 sm:w-24" /> : <div className="tile-icon h-16 w-16 sm:h-24 sm:w-24" />}
-        <div className="min-w-0 flex-1">
+        {student.photoUrl ? <img src={student.photoUrl} alt={student.name} className="h-16 w-16 shrink-0 rounded-2xl object-cover ring-2 ring-primary/50 glow sm:h-24 sm:w-24" /> : <div className="tile-icon h-16 w-16 sm:h-24 sm:w-24" />}
+        <div className="min-w-[10rem] flex-1">
           <h2 className="break-words text-2xl font-bold sm:text-3xl">Welcome, {first}!</h2>
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">{student.verified && <BadgeCheck aria-label="Face verified" className="verified-badge h-4 w-4" />}{student.id} · Grade {student.grade}{student.section} · {student.stream}</div>
         </div>
@@ -521,8 +521,8 @@ function Results({ student }: { student: PublicStudent }) {
         {(data.rounds.length ? data.rounds : [data.round]).map((r) => <Btn key={r} variant={r === data.round ? "primary" : "ghost"} className="py-1" onClick={() => setRound(r)}>Round {r}</Btn>)}
       </div>
       <div className="flex flex-wrap items-center gap-3 sm:gap-5">
-        {student.photoUrl && <img src={student.photoUrl} alt={student.name} className="h-16 w-16 rounded-2xl object-cover ring-2 ring-primary/50 sm:h-24 sm:w-24" />}
-        <div className="min-w-0 flex-1">
+        {student.photoUrl && <img src={student.photoUrl} alt={student.name} className="h-16 w-16 shrink-0 rounded-2xl object-cover ring-2 ring-primary/50 sm:h-24 sm:w-24" />}
+        <div className="min-w-[10rem] flex-1">
           <div className="text-xs uppercase tracking-widest text-primary">Official scorecard · Round {data.round}</div>
           <h2 className="flex flex-wrap items-center gap-2 break-words text-xl font-bold sm:text-2xl">{student.name}{student.verified && <BadgeCheck aria-label="Face verified" className="verified-badge h-5 w-5" />}</h2>
           <div className="text-sm text-muted-foreground">{student.id} · Grade {student.grade}{student.section} · {student.stream}</div>
