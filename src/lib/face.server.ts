@@ -118,7 +118,8 @@ export async function checkNotDuplicate(dataUrl: string, existing: string[]) {
       ]),
     ]);
     const idx = screenMatch(r, batch.length);
-    return idx === null ? false : confirmSame(dataUrl, batch[idx - 1]);
+    const match = idx === null ? undefined : batch[idx - 1];
+    return match ? confirmSame(dataUrl, match) : false;
   }));
   if (results.some(Boolean)) throw new Error(DUPLICATE_MSG);
 }
