@@ -15,6 +15,13 @@
       "when": 1794449566943,
       "tag": "0001_reset_deletes_results",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794710793194,
+      "tag": "0002_student_pin_lockout",
+      "breakpoints": true
     }
   ]
 }

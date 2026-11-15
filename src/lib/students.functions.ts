@@ -4,7 +4,7 @@ import { normalizeName, requireRosterName, requireAdminPin } from "@/lib/identit
 import type { TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 export { normalizeName } from "@/lib/identity";
 
-import { canReplaceFace, teacherRowSchema, teacherDetailsSchema, studentDetailsSchema, academicYear, sessionBlocksSignIn, teacherCredentialKey, RESULT_PIN, hashResultPin } from "@/lib/admin-rules";
+import { canReplaceFace, teacherRowSchema, teacherDetailsSchema, studentDetailsSchema, academicYear, sessionBlocksSignIn, teacherCredentialKey, RESULT_PIN, hashResultPin, pinLocked, afterWrongPin } from "@/lib/admin-rules";
 
 const BUCKET = "student-photos";
 
@@ -91,13 +91,25 @@ export const registerStudent = createServerFn({ method: "POST" })
   });
 
 export const loginStudent = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) => z.object({ name: z.string().trim().min(1).max(100), id: z.string().trim().min(3).max(30), token: z.string().uuid().optional() }).parse(d))
+  .inputValidator((d: unknown) => z.object({ id: z.string().trim().min(3).max(30), pin: z.string().trim().max(10).optional(), token: z.string().uuid().optional() }).parse(d))
   .handler(async ({ data }) => {
     const sb = await admin();
     const { data: row } = await sb.from("registered_students").select("*").eq("student_code", data.id.toUpperCase()).maybeSingle();
-    if (!row || normalizeName(row.full_name) !== normalizeName(data.name)) return { ok: false as const, error: "Name and ID do not match our records." };
-    if (!row.face_verified) return { ok: false as const, error: "IT Admin reset your face verification. Please register again with a fresh photo." };
+    const wrong = { ok: false as const, error: "Student ID or passcode is wrong." };
+    if (!row) return wrong;
+    // Students sign in with their ID + the passcode they chose at registration; a reload on the same device reuses its session token.
     const sameDevice = !!data.token && data.token === row.session_token;
+    if (!sameDevice) {
+      if (!data.pin) return { ok: false as const, error: "Please sign in again with your student ID and passcode." };
+      if (pinLocked(row.pin_locked_until)) return { ok: false as const, error: "Too many wrong passcodes. Please wait 15 minutes and try again, or ask IT Admin." };
+      if (!row.results_pin_hash) return { ok: false as const, error: "No passcode is set for this ID. Please ask IT Admin to set one." };
+      if ((await hashResultPin(row.student_code, data.pin)) !== row.results_pin_hash) {
+        await sb.from("registered_students").update(afterWrongPin(row.pin_failures ?? 0)).eq("id", row.id);
+        return wrong;
+      }
+      if (row.pin_failures || row.pin_locked_until) await sb.from("registered_students").update({ pin_failures: 0, pin_locked_until: null }).eq("id", row.id);
+    }
+    if (!row.face_verified) return { ok: false as const, error: "IT Admin reset your face verification. Please register again with a fresh photo." };
     if (!sameDevice) {
       const { data: st } = await sb.from("exam_settings").select("exam_live,current_round").eq("id", 1).single();
       // A device that lost power or internet has its exam frozen; the student may sign in again (on the same or another device) to wait for the Director.
@@ -393,7 +405,7 @@ export const adminResetResultPin = createServerFn({ method: "POST" })
  .inputValidator((d: unknown) => z.object({ passcode: z.string().min(1).max(200), id: z.string().min(3).max(30), pin: z.string().regex(RESULT_PIN) }).parse(d))
  .handler(async ({ data }) => {
    checkPasscode(data.passcode); const sb = await admin();
-   const { data: row, error } = await sb.from("registered_students").update({ results_pin_hash: await hashResultPin(data.id,data.pin) }).eq("student_code",data.id).select("id").maybeSingle();
+   const { data: row, error } = await sb.from("registered_students").update({ results_pin_hash: await hashResultPin(data.id,data.pin), pin_failures: 0, pin_locked_until: null }).eq("student_code",data.id).select("id").maybeSingle();
    if (error || !row) throw new Error("Could not reset this student's result passcode."); return { ok: true };
  });
 export const adminSetStaffVisibility = createServerFn({ method: "POST" })

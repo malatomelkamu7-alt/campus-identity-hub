@@ -35,7 +35,7 @@ use the editor.
 - Name edits use the service-role-only `admin_edit_identity_name` RPC to update the roster and linked registration atomically, keeping sign-in names consistent.
 - All exam state (settings singleton, question banks, attempts, alerts, per-round results) lives in the database and is reached only via server functions in `src/lib/exam.functions.ts`; screens poll every few seconds instead of keeping local copies, so every role sees the same live state.
 - Director, IT Admin and Teacher access is checked server-side; `staff_credentials` rows override the env passcodes, and a per-teacher `teacher:<id>` row replaces the shared teacher password for that teacher only.
-- Students re-prove name + ID + the session token issued at sign-in on every exam call; only the latest token is valid, and a second sign-in is refused while the exam is live and the first session is recently active, so one ID cannot be used on two devices.
+- Students sign in with ID + result passcode (`afterWrongPin` lockout); exam calls re-prove ID + the latest session token; a second sign-in is refused while the exam is live and the first session is recently active, so one ID cannot be used on two devices.
 - Exam attempts retain personal deadlines; scheduling controls new starts independently, and Director extensions update live deadlines atomically.
 - Submission scoring and attempt/result writes use the service-role-only atomic submission RPC; per-exam marks remain on attempts and subject summaries on round_results.
 - Round and alert removal archives or dismisses records instead of deleting marks; new rounds increment current_round and preserve earlier attempts.

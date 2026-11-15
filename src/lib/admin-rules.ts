@@ -78,3 +78,12 @@ export async function hashResultPin(studentCode: string, pin: string) {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`bh-result:${studentCode.toUpperCase()}:${pin}`));
   return Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+/** Students sign in with their ID + result passcode; this many wrong passcodes in a row pauses that ID. */
+export const PIN_MAX_FAILURES = 5;
+export const PIN_LOCK_MS = 15 * 60 * 1000;
+export const pinLocked = (lockedUntil: string | null | undefined, time = Date.now()) => !!lockedUntil && Date.parse(lockedUntil) > time;
+export function afterWrongPin(failures: number, time = Date.now()) {
+  const n = failures + 1;
+  return n >= PIN_MAX_FAILURES ? { pin_failures: 0, pin_locked_until: new Date(time + PIN_LOCK_MS).toISOString() } : { pin_failures: n, pin_locked_until: null };
+}

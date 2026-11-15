@@ -276,6 +276,8 @@ export type Database = {
           grade: string
           id: string
           photo_path: string
+          pin_failures: number
+          pin_locked_until: string | null
           results_pin_hash: string | null
           roster_id: string | null
           section: string
@@ -292,6 +294,8 @@ export type Database = {
           grade?: string
           id?: string
           photo_path: string
+          pin_failures?: number
+          pin_locked_until?: string | null
           results_pin_hash?: string | null
           roster_id?: string | null
           section: string
@@ -308,6 +312,8 @@ export type Database = {
           grade?: string
           id?: string
           photo_path?: string
+          pin_failures?: number
+          pin_locked_until?: string | null
           results_pin_hash?: string | null
           roster_id?: string | null
           section?: string

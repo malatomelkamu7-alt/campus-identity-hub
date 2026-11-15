@@ -38,20 +38,22 @@ function StudentPage() {
   const ping = useServerFn(studentPing);
   const leave = useServerFn(studentSignOut);
   const [notice, setNotice] = useState("");
+  // The passcode typed at sign-in stays only in memory so "My results" opens without asking again.
+  const [resultPin, setResultPin] = useState("");
   const { data: pub } = usePublicState();
   const regClosed = !pub || !pub.registrationOpen;
 
   useEffect(() => {
     const raw = sessionStorage.getItem(SESSION);
     if (!raw) return;
-    const { name, id, token } = JSON.parse(raw) as { name: string; id: string; token?: string };
-    login({ data: { name, id, token } }).then((r) => { if (r.ok) signIn(r.student); else { sessionStorage.removeItem(SESSION); setNotice(r.error); } }).catch(() => {});
+    const { id, token } = JSON.parse(raw) as { id: string; token?: string };
+    login({ data: { id, token } }).then((r) => { if (r.ok) signIn(r.student); else { sessionStorage.removeItem(SESSION); setNotice(r.error); } }).catch(() => {});
   }, []);
 
-  const signIn = (s: PublicStudent) => { sessionStorage.setItem(SESSION, JSON.stringify({ name: s.name, id: s.id, token: s.sessionToken })); setStudent(s); setNotice(""); };
+  const signIn = (s: PublicStudent, pin = "") => { sessionStorage.setItem(SESSION, JSON.stringify({ id: s.id, token: s.sessionToken })); setStudent(s); if (pin) setResultPin(pin); setNotice(""); };
   const signOut = (msg = "") => {
     if (student?.sessionToken) leave({ data: { id: student.id, token: student.sessionToken } }).catch(() => {});
-    sessionStorage.removeItem(SESSION); setStudent(null); setMode("home"); setGate("choose"); setNotice(msg);
+    sessionStorage.removeItem(SESSION); setStudent(null); setResultPin(""); setMode("home"); setGate("choose"); setNotice(msg);
   };
   useEffect(() => {
     if (!student?.sessionToken) return;
@@ -65,12 +67,12 @@ function StudentPage() {
   }, [student?.id, student?.sessionToken]);
 
   if (!student) return (
-    <Shell title="Student Portal" subtitle="Register once with a live photo, then sign in with your name and ID" help>
+    <Shell title="Student Portal" subtitle="Register once with a live photo, then sign in with your student ID and passcode" help>
       {notice && <p role="alert" className="mx-auto mb-4 max-w-xl rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-center text-sm text-destructive">{notice}</p>}
       {gate === "choose" && (
         <div className="mx-auto grid max-w-xl grid-cols-2 gap-4">
           <button onClick={() => setGate("register")} className="tile tile-hover relative text-left"><span className="tile-icon">{regClosed ? <Lock className="h-5 w-5" /> : <UserPlus className="h-5 w-5" />}</span><div className="mt-4 text-lg font-semibold">Register</div><div className="text-sm text-muted-foreground">{regClosed ? "Closed by IT Admin" : "New student · live photo"}</div>{regClosed && <span className="absolute right-3 top-3 rounded-full border border-border bg-secondary/60 p-1.5"><Lock className="h-3.5 w-3.5 text-muted-foreground" /></span>}</button>
-          <button onClick={() => setGate("login")} className="tile tile-hover text-left"><span className="tile-icon"><LogIn className="h-5 w-5" /></span><div className="mt-4 text-lg font-semibold">Sign in</div><div className="text-sm text-muted-foreground">Name + student ID</div></button>
+          <button onClick={() => setGate("login")} className="tile tile-hover text-left"><span className="tile-icon"><LogIn className="h-5 w-5" /></span><div className="mt-4 text-lg font-semibold">Sign in</div><div className="text-sm text-muted-foreground">Student ID + passcode</div></button>
         </div>
       )}
       {gate === "login" && <Login onLogin={signIn} onBack={() => setGate("choose")} />}
@@ -101,24 +103,24 @@ function StudentPage() {
         <button onClick={() => setMode("home")} className={`tile tile-hover text-left ${mode === "home" ? "tile-active" : ""}`}><span className="tile-icon"><ClipboardList className="h-5 w-5" /></span><div className="mt-3 font-semibold">Exams</div><div className="text-sm text-muted-foreground">Scheduled tests</div></button>
         <button onClick={() => setMode("results")} className={`tile tile-hover text-left ${mode === "results" ? "tile-active" : ""}`}><span className="tile-icon"><BarChart3 className="h-5 w-5" /></span><div className="mt-3 font-semibold">My results</div><div className="text-sm text-muted-foreground">Official scorecard</div></button>
       </div>
-      {mode === "home" ? <ExamLobby stream={student.stream} onStart={() => setMode("exam")} /> : <Results student={student} />}
+      {mode === "home" ? <ExamLobby stream={student.stream} onStart={() => setMode("exam")} /> : <Results student={student} initialPin={resultPin} />}
     </Shell>
   );
 }
 
-function Login({ onLogin, onBack }: { onLogin: (s: PublicStudent) => void; onBack: () => void }) {
+function Login({ onLogin, onBack }: { onLogin: (s: PublicStudent, pin: string) => void; onBack: () => void }) {
   const login = useServerFn(loginStudent);
-  const [name, setName] = useState(""); const [id, setId] = useState(""); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  const [pin, setPin] = useState(""); const [id, setId] = useState(""); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
   return (
     <form className="tile mx-auto max-w-sm space-y-3 text-center" onSubmit={async (e) => {
       e.preventDefault(); setErr(""); setBusy(true);
-      try { const r = await login({ data: { name, id } }); r.ok ? onLogin(r.student) : setErr(r.error); }
+      try { const r = await login({ data: { id, pin } }); r.ok ? onLogin(r.student, pin) : setErr(r.error); }
       catch { setErr("Could not sign in. Check your details."); } finally { setBusy(false); }
     }}>
       <img src="/school-logo.jpg" alt="Burka Harbu logo" className="mx-auto h-20 w-20 rounded-full ring-2 ring-primary/40 glow" />
       <h2 className="font-semibold">Student sign in</h2>
-      <input className="field" placeholder="Full name (as registered)" value={name} onChange={(e) => setName(e.target.value)} required />
-      <input className="field font-mono uppercase" placeholder="Student ID e.g. BH-12A-4821" value={id} onChange={(e) => setId(e.target.value)} required />
+      <input className="field font-mono uppercase" placeholder="Student ID e.g. BH-12A-4821" value={id} onChange={(e) => setId(e.target.value)} autoComplete="username" required aria-label="Student ID" />
+      <input className="field font-mono tracking-widest" type="password" inputMode="numeric" autoComplete="current-password" pattern="\d{4,6}" maxLength={6} placeholder="Your passcode" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} required aria-label="Passcode" />
       {err && <p className="text-xs text-destructive">{err}</p>}
       <Btn className="w-full" disabled={busy}>{busy ? "Checking…" : "Sign in"}</Btn>
       <button type="button" onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground">← Back</button>
@@ -126,7 +128,7 @@ function Login({ onLogin, onBack }: { onLogin: (s: PublicStudent) => void; onBac
   );
 }
 
-function Register({ onDone, onBack }: { onDone: (s: PublicStudent) => void; onBack: () => void }) {
+function Register({ onDone, onBack }: { onDone: (s: PublicStudent, pin?: string) => void; onBack: () => void }) {
   const register = useServerFn(registerStudent);
   const checkName = useServerFn(checkRegistrationName);
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -149,7 +151,7 @@ function Register({ onDone, onBack }: { onDone: (s: PublicStudent) => void; onBa
       <p className="text-xs text-warning">Write this ID down. You need your name and this ID to sign in.</p>
       <div className="flex gap-2">
         <Btn variant="ghost" className="flex-1" onClick={() => navigator.clipboard?.writeText(issued.id)}><Copy className="h-4 w-4" />Copy</Btn>
-        <Btn className="flex-1" onClick={() => onDone(issued)}>Continue</Btn>
+        <Btn className="flex-1" onClick={() => onDone(issued, f.resultPin)}>Continue</Btn>
       </div>
     </div>
   );
@@ -482,10 +484,10 @@ function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void 
   );
 }
 
-function Results({ student }: { student: PublicStudent }) {
+function Results({ student, initialPin = "" }: { student: PublicStudent; initialPin?: string }) {
   const fn = useServerFn(studentResults);
   const [round, setRound] = useState<number | undefined>();
-  const [pin, setPin] = useState(""); const [typed, setTyped] = useState(""); const [typed2, setTyped2] = useState("");
+  const [pin, setPin] = useState(initialPin); const [typed, setTyped] = useState(""); const [typed2, setTyped2] = useState("");
   const { data, error } = useQuery({ queryKey: ["results", student.id, round, pin], queryFn: () => fn({ data: { name: student.name, id: student.id, token: student.sessionToken ?? "", round, pin: pin || undefined } }), refetchInterval: 4000, retry: false });
   // When the Director adds marks for a flagged question, the scorecard refreshes by itself and says so.
   const lastScores = useRef<{ round: number; scores: Record<string, number> } | null>(null);
