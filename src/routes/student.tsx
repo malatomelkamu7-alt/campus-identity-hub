@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Lock, Maximize, Flag, ChevronLeft, ChevronRight, AlertTriangle, Trophy, LogOut, ShieldCheck, UserPlus, LogIn, BadgeCheck, Copy, ClipboardList, BarChart3, WifiOff, KeyRound, LifeBuoy, Sparkles } from "lucide-react";
+import { Lock, Maximize, Flag, ChevronLeft, ChevronRight, AlertTriangle, Trophy, LogOut, ShieldCheck, UserPlus, LogIn, BadgeCheck, Copy, ClipboardList, BarChart3, WifiOff, KeyRound, LifeBuoy, Sparkles, Calculator, X } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { Shell, Panel, Btn } from "@/components/Shell";
 import { LiveCamera } from "@/components/LiveCamera";
-import { MathText, PassageBox, FigureImage } from "@/components/MathText";
+import { MathText, PassageBox, FigureImage, GivenSheet } from "@/components/MathText";
 import { canTakeStream } from "@/lib/admin-rules";
 import { fmt } from "@/lib/identity";
 import { HEARTBEAT_MS, HELP_COOLDOWN_SEC } from "@/lib/exam-timing";
@@ -262,6 +262,7 @@ function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void 
   const [flagFor, setFlagFor] = useState<string | null>(null);
   const [flagNote, setFlagNote] = useState("");
   const [askSubmit, setAskSubmit] = useState(false);
+  const [showGiven, setShowGiven] = useState(false);
   const [ended, setEnded] = useState<null | "submitted" | "blocked" | "timeup">(null);
   const answersRef = useRef(answers); answersRef.current = answers;
   const endedRef = useRef(ended); endedRef.current = ended;
@@ -378,6 +379,13 @@ function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void 
   const cur = paper.paper[idx];
   if (!cur) return null;
   const answeredCount = Object.keys(answers).length;
+  // Questions of one passage sit next to each other, so the passage can say which questions it is for.
+  let pFrom = idx, pTo = idx;
+  if (cur.passage) {
+    while (pFrom > 0 && paper.paper[pFrom - 1]?.passage === cur.passage) pFrom--;
+    while (pTo < paper.paper.length - 1 && paper.paper[pTo + 1]?.passage === cur.passage) pTo++;
+  }
+  const passageLabel = pFrom === pTo ? `Read the passage for question ${idx + 1}` : `Read the passage for questions ${pFrom + 1}–${pTo + 1}`;
   return (
     // The exam covers the whole screen on every device, including phones whose browser has no fullscreen mode.
     // Questions and choices cannot be selected, copied, cut, dragged or long-pressed during the exam.
@@ -389,6 +397,7 @@ function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void 
           <div className="text-sm"><div className="font-semibold">{paper.title}</div><div className="text-xs text-muted-foreground">{student.id} · {answeredCount}/{paper.paper.length} answered</div></div>
           <span className={`rounded-full border border-border px-2.5 py-1 font-mono text-sm font-bold lg:hidden ${left < 300 ? "text-destructive" : "text-primary"}`} aria-label="Time left">{fmt(left)}</span>
           <span className={`ml-auto flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${violations ? "border-destructive/50 text-destructive" : "border-accent/40 text-accent"}`}><AlertTriangle className="h-3.5 w-3.5" />{violations}/3 warnings</span>
+          {paper.given && <Btn variant="ghost" className="px-3" onClick={() => setShowGiven(true)} title="Values, formulas and tables you may use" aria-label="Open the Given sheet"><Calculator className="h-4 w-4 text-primary" /><span>Given</span></Btn>}
           <Btn variant="ghost" className="px-3" disabled={help !== "idle"} onClick={askHelp} title="Ask the Director for help" aria-label="Ask the Director for help"><LifeBuoy className={`h-4 w-4 ${help === "sent" ? "text-accent" : "text-warning"}`} /><span>{help === "sent" ? "Help sent" : help === "sending" ? "Sending…" : "Help"}</span></Btn>
           <Btn variant="accent" onClick={() => setAskSubmit(true)}>Submit</Btn>
         </div>
@@ -425,6 +434,16 @@ function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void 
           </div>
         </div>
       )}
+      {showGiven && paper.given && (
+        <div role="dialog" aria-modal="true" aria-labelledby="given-title" className="fixed inset-0 z-40 flex flex-col bg-background/95 p-3 backdrop-blur-sm sm:p-6">
+          <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 pb-3">
+            <h2 id="given-title" className="flex items-center gap-2 text-lg font-bold"><Calculator className="h-5 w-5 text-primary" />Given — you may use this</h2>
+            <button type="button" onClick={() => setShowGiven(false)} className="flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-sm hover:border-primary"><X className="h-4 w-4" />Back to question</button>
+          </div>
+          <div className="glass mx-auto w-full max-w-3xl flex-1 overflow-y-auto p-4 sm:p-6"><GivenSheet text={paper.given} /></div>
+          <p className="mx-auto mt-2 max-w-3xl text-center text-xs text-muted-foreground">Your time keeps running. Open this again any time with the “Given” button.</p>
+        </div>
+      )}
       {flagFor && (
         <div role="dialog" aria-modal="true" aria-labelledby="flag-title" className="fixed inset-0 z-40 flex items-center justify-center bg-background/90 p-4 backdrop-blur-sm">
           <div className="glass w-full max-w-sm p-6">
@@ -447,7 +466,7 @@ function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void 
       <div className="mx-auto grid max-w-6xl gap-4 px-3 py-4 sm:px-4 sm:py-6 lg:grid-cols-[1fr_260px]">
         <div className="glass p-4 sm:p-6">
           <div className="flex items-center justify-between text-xs text-muted-foreground"><span>Question {idx + 1} of {paper.paper.length}</span><span>{cur.marks} mark{cur.marks > 1 ? "s" : ""}</span></div>
-          {cur.passage && <PassageBox key={`p-${cur.id}`} text={cur.passage} className="mt-3" />}
+          {cur.passage && <PassageBox key={`p-${cur.id}`} text={cur.passage} label={passageLabel} className="mt-3" />}
           <h2 className="mt-3 break-words text-lg font-semibold leading-relaxed sm:text-xl"><MathText text={cur.text} /></h2>
           {cur.figureUrl && <FigureImage src={cur.figureUrl} className="mt-3" />}
           <div className="mt-6 space-y-3">

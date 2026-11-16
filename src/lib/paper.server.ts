@@ -1,9 +1,9 @@
 /* Reads an uploaded exam paper (page pictures from a PDF or photo, or text and pictures from a Word/text file)
-   and returns its multiple-choice questions in order, with formulas, reading passages and figure positions. */
+   and returns its multiple-choice questions in order, with formulas, reading passages, figure positions and the paper's "Given" sheet. */
 import { createOpenAI } from "@ai-sdk/openai";
 import { streamText, Output, jsonSchema, NoObjectGeneratedError, type ModelMessage, type UserContent } from "ai";
 import { createLovableAiGatewayRunIdFetch } from "@/lib/ai/run-id.server";
-import { normalizeScanned, type ScannedQuestion } from "@/lib/paper";
+import { normalizeScanned, readGiven, type ScannedQuestion } from "@/lib/paper";
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1";
 const MODEL = "openai/gpt-6-astra";
@@ -26,9 +26,10 @@ FORMULAS AND SYMBOLS (mathematics, physics, chemistry, economics and any other s
 - A dollar sign meaning money must be written as \\$ (e.g. \\$500). Ethiopian Birr stays as "Birr".
 - Copy the maths exactly as printed; never simplify or solve it.
 
-READING PASSAGES (English and any subject with a shared text, poem, dialogue, letter, case study or data description):
-- Put each shared passage ONCE in "passages" with a short id ("P1", "P2" ...). Copy it completely and exactly, including its title, with paragraph breaks as \\n\\n and line numbers if printed.
-- Set passage_id on EVERY question that uses that passage; null for other questions.
+READING PASSAGES (English and any subject with a shared text, paragraph, poem, dialogue, letter, advertisement, case study or data description):
+- Any text that students must read to answer one or more questions is a passage, even a single short paragraph used by only one question ("Read the paragraph below and answer"), and a cloze text with numbered blanks.
+- Put each passage ONCE in "passages" with a short id ("P1", "P2" ...). Copy it completely and exactly, word for word, including its title, with paragraph breaks as \\n\\n. Keep paragraph numbers or line numbers if printed (questions often refer to "paragraph 2" or "line 5"). Never summarise or shorten it.
+- Set passage_id on EVERY question that uses that passage; null for other questions. Do not copy the passage into the question text.
 - The general instruction line ("Read the passage and answer questions 1-5") is not part of the passage.
 
 FIGURES (graphs, diagrams, drawings, charts, circuits, geometry figures, maps, tables of data, chemical structures, apparatus):
@@ -39,17 +40,26 @@ FIGURES (graphs, diagrams, drawings, charts, circuits, geometry figures, maps, t
 - A small data table may instead be written in the question text with one row per line and cells separated by " | ".
 - If several questions use the same figure, give each of them that figure.
 
+GIVEN (data the paper lets students use during the exam):
+- Papers often print "Given:", "Use ...", "Take g = 10 m/s²", constants, atomic masses, a formula sheet, a periodic table part, a log/trig table, or a data table that is not part of one single question.
+- Copy all of it once into "given", exactly as printed, with the same LaTeX rules as questions. Write each value on its own line. Write a table with one row per line and cells separated by " | ", the first row being the headings.
+- If some data is only for certain questions, start that part with a line like "For questions 10–15:".
+- Data printed inside one question's own wording stays in that question's text.
+- given is null when the paper gives nothing like this.
+
 Ignore headers, general instructions, school names, page numbers and blank answer sheets.`;
 
 const nullable = (s: object) => ({ anyOf: [s, { type: "null" }] });
 const schema = jsonSchema<{
+  given: string | null;
   passages: { id: string; text: string }[];
   questions: { text: string; options: string[]; answer: string | null; answer_evidence: string | null; marks: number; passage_id: string | null; figure: { source: "page" | "embedded"; index: number; x0: number; y0: number; x1: number; y1: number } | null }[];
 }>({
   type: "object",
   additionalProperties: false,
-  required: ["passages", "questions"],
+  required: ["given", "passages", "questions"],
   properties: {
+    given: { type: ["string", "null"] },
     passages: {
       type: "array",
       items: { type: "object", additionalProperties: false, required: ["id", "text"], properties: { id: { type: "string" }, text: { type: "string" } } },
@@ -114,7 +124,10 @@ function friendly(err: unknown): Error {
   return new Error("The paper reader is unavailable right now. Please try again.");
 }
 
-export async function scanPaper(input: PaperInput): Promise<ScannedQuestion[]> {
+export type ScannedPaper = { questions: ScannedQuestion[]; given: string | null };
+const readPaper = (parsed: unknown): ScannedPaper => ({ questions: normalizeScanned(parsed), given: readGiven(parsed) });
+
+export async function scanPaper(input: PaperInput): Promise<ScannedPaper> {
   const key = process.env["LOVABLE_API_KEY"];
   if (!key) throw new Error("Paper scanning is not configured.");
   const content = paperContent(input);
@@ -144,10 +157,10 @@ export async function scanPaper(input: PaperInput): Promise<ScannedQuestion[]> {
   });
   try {
     const output = await result.output;
-    return normalizeScanned(output);
+    return readPaper(output);
   } catch (err) {
     if (NoObjectGeneratedError.isInstance(err) && err.text) {
-      try { return normalizeScanned(JSON.parse(err.text)); } catch { /* fall through */ }
+      try { return readPaper(JSON.parse(err.text)); } catch { /* fall through */ }
     }
     if (streamError || (err as { statusCode?: number })?.statusCode) throw friendly(streamError ?? err);
     console.error("Paper scan produced no questions", err);

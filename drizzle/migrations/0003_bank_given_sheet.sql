@@ -1,0 +1,2 @@
+ALTER TABLE public.question_banks ADD COLUMN IF NOT EXISTS given text;
+COMMENT ON COLUMN public.question_banks.given IS 'Reference data printed on the paper (Given values, constants, formula sheet, data tables) that students may open at any time during the exam.';

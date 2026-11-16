@@ -2,10 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { FileUp, PenSquare, Send, Trash2, Plus, Lock, Save, Flag, KeyRound, LogOut, Table2, Search, Loader2, BookOpen, ImagePlus, X, Sigma } from "lucide-react";
-import { MathText, FigureImage } from "@/components/MathText";
+import { FileUp, PenSquare, Send, Trash2, Plus, Lock, Save, Flag, KeyRound, LogOut, Table2, Search, Loader2, BookOpen, ImagePlus, X, Sigma, Calculator, ListX } from "lucide-react";
+import { MathText, FigureImage, GivenSheet } from "@/components/MathText";
 import { hasMath } from "@/lib/math-text";
-import { PAPER_ACCEPT, MAX_PAPER_BYTES, type ScannedQuestion } from "@/lib/paper";
+import { PAPER_ACCEPT, MAX_PAPER_BYTES, MAX_GIVEN, type ScannedQuestion } from "@/lib/paper";
 import { Shell, Panel, Btn } from "@/components/Shell";
 import { listTeachers, teacherDashboard, teacherSaveBank, teacherRemoveBank, teacherRemoveFlag, teacherChangePassword, teacherMarks, teacherScanPaper, teacherUploadFigure, teacherFigureUrls, type Question } from "@/lib/exam.functions";
 
@@ -23,7 +23,9 @@ export const Route = createFileRoute("/teacher")({
   component: Teacher,
 });
 
-type Draft = { id?: string; subject: string; title: string; status: "draft" | "queued"; questions: Question[] };
+type Draft = { id?: string; subject: string; title: string; status: "draft" | "queued"; questions: Question[]; given: string };
+type BankRow = { id: string; subject: string; title: string; status: string; questions: Question[]; given: string | null };
+const toDraft = (b: BankRow): Draft => ({ id: b.id, subject: b.subject, title: b.title, status: b.status as Draft["status"], questions: b.questions, given: b.given ?? "" });
 
 function Teacher() {
   const list = useServerFn(listTeachers);
@@ -74,13 +76,19 @@ function Workspace({ auth, onOut, onPassword }: { auth: { tid: string; pw: strin
   const [view, setView] = useState<"banks" | "marks">("banks");
   const subjects = data?.teacher.subjects ?? [];
   const subject = subjects.includes(picked) ? picked : subjects[0] ?? "";
-  useEffect(() => { if (data && !draft && data.banks[0]) { const b = data.banks[0]; setDraft({ id: b.id, subject: b.subject, title: b.title, status: b.status as Draft["status"], questions: b.questions }); } }, [data, draft]);
+  useEffect(() => { if (data && !draft && data.banks[0]) setDraft(toDraft(data.banks[0])); }, [data, draft]);
   if (!data) return <Shell title="Teacher Portal" subtitle="Loading…"><p className="text-muted-foreground">Loading…</p></Shell>;
-  const newBank = (title = `${subject} Mock ${data.banks.filter((b) => b.subject === subject).length + 1}`, questions: Question[] = []) => setDraft({ subject, title, status: "draft", questions });
-  const persist = async (status: Draft["status"]) => {
-    if (!draft) return; setErr(""); setMsg("");
-    try { const r = await save({ data: { passcode: auth.pw, teacherId: auth.tid, ...draft, status } }); setDraft({ ...draft, id: r.id, status }); setMsg(status === "queued" ? "Submitted to the Director." : "Saved."); qc.invalidateQueries({ queryKey: ["teacher"] }); }
+  const newBank = (title = `${subject} Mock ${data.banks.filter((b) => b.subject === subject).length + 1}`, questions: Question[] = [], given = "") => setDraft({ subject, title, status: "draft", questions, given });
+  const persist = async (status: Draft["status"], d: Draft | null = draft, done?: string) => {
+    if (!d) return; setErr(""); setMsg("");
+    try { const r = await save({ data: { passcode: auth.pw, teacherId: auth.tid, ...d, status } }); setDraft({ ...d, id: r.id, status }); setMsg(done ?? (status === "queued" ? "Submitted to the Director." : "Saved.")); qc.invalidateQueries({ queryKey: ["teacher"] }); }
     catch (e) { setErr(e instanceof Error ? e.message : "Could not save."); }
+  };
+  // Empties the open bank (questions and Given sheet) and saves it as a draft, so it leaves the Director's queue until refilled.
+  const removeAll = () => {
+    if (!draft || !draft.questions.length) return;
+    if (!confirm(`Remove all ${draft.questions.length} questions from "${draft.title}"? The bank stays, empty, as a draft so you can upload or type new questions. Students' saved marks are kept.`)) return;
+    persist("draft", { ...draft, questions: [], given: "" }, "All questions removed. Upload a paper or add questions, then submit again.");
   };
   const run = async (fn: () => Promise<unknown>, done: string) => {
     setErr(""); setMsg("");
@@ -110,7 +118,7 @@ function Workspace({ auth, onOut, onPassword }: { auth: { tid: string; pw: strin
               {data.banks.length === 0 && <p className="text-sm text-muted-foreground">No banks yet.</p>}
               {data.banks.map((b) => (
                 <div key={b.id} className={`flex items-stretch gap-1 rounded-lg border ${draft?.id === b.id ? "border-primary glow" : "border-border"}`}>
-                  <button onClick={() => setDraft({ id: b.id, subject: b.subject, title: b.title, status: b.status as Draft["status"], questions: b.questions })} className="min-w-0 flex-1 p-3 text-left">
+                  <button onClick={() => setDraft(toDraft(b))} className="min-w-0 flex-1 p-3 text-left">
                     <div className="break-words text-sm font-medium">{b.title}</div>
                     <div className="text-xs text-muted-foreground">{b.subject} · {b.questions.length} questions · <span className={b.status === "draft" ? "text-warning" : "text-accent"}>{b.status === "queued" ? "submitted" : "draft"}</span></div>
                   </button>
@@ -125,10 +133,10 @@ function Workspace({ auth, onOut, onPassword }: { auth: { tid: string; pw: strin
               {!data.flags.length && <li className="text-muted-foreground">No flags from students.</li>}
             </ul>
           </Panel>
-          <Importer auth={auth} subject={subject} onImport={(title, qs) => { newBank(title, qs); setMsg(`${qs.length} questions placed in a new bank. Check them, then press “Submit to Director”.`); }} />
+          <Importer auth={auth} subject={subject} onImport={(title, qs, given) => { newBank(title, qs, given); setMsg(`${qs.length} questions placed in a new bank${given ? " with its Given sheet" : ""}. Check them, then press “Submit to Director”.`); }} />
           <TeacherPassword tid={auth.tid} onChanged={onPassword} />
         </div>
-        <div className="lg:col-span-2">{draft ? <Editor auth={auth} draft={draft} setDraft={setDraft} onSave={persist} /> : <Panel title="Editor"><p className="text-sm text-muted-foreground">Create a bank to begin.</p></Panel>}</div>
+        <div className="lg:col-span-2">{draft ? <Editor auth={auth} draft={draft} setDraft={setDraft} onSave={(st) => persist(st)} onRemoveAll={removeAll} /> : <Panel title="Editor"><p className="text-sm text-muted-foreground">Create a bank to begin.</p></Panel>}</div>
       </div>
       </>}
     </Shell>
@@ -149,11 +157,11 @@ function useFigureUrls(auth: Auth, paths: (string | undefined)[]) {
 
 type Preview = ScannedQuestion & { figurePath?: string | undefined; figureSrc?: string | undefined };
 
-function Importer({ auth, subject, onImport }: { auth: Auth; subject: string; onImport: (title: string, q: Question[]) => void }) {
+function Importer({ auth, subject, onImport }: { auth: Auth; subject: string; onImport: (title: string, q: Question[], given: string) => void }) {
   const scan = useServerFn(teacherScanPaper);
   const upload = useServerFn(teacherUploadFigure);
   const [busy, setBusy] = useState(""); const [err, setErr] = useState("");
-  const [preview, setPreview] = useState<{ name: string; qs: Preview[]; notes: string[] } | null>(null);
+  const [preview, setPreview] = useState<{ name: string; qs: Preview[]; notes: string[]; given: string | null } | null>(null);
   const load = async (f: File) => {
     setErr(""); setPreview(null);
     const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
@@ -207,7 +215,7 @@ function Importer({ auth, subject, onImport }: { auth: Auth; subject: string; on
         qs.push({ ...q, figurePath, figureSrc });
       }
       if (failed) notes.push(`${failed} picture(s) could not be saved. Add them with “Add picture” in the editor.`);
-      setPreview({ name: f.name, qs, notes });
+      setPreview({ name: f.name, qs, notes, given: r.given });
     } catch (e) { setErr(e instanceof Error ? e.message : "Could not read this paper."); }
     finally { setBusy(""); }
   };
@@ -231,7 +239,9 @@ function Importer({ auth, subject, onImport }: { auth: Auth; subject: string; on
             {withMath > 0 && <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-primary">{withMath} with formulas</span>}
             {withFig > 0 && <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-primary">{withFig} with figures</span>}
             {withPassage > 0 && <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-primary">{withPassage} with a passage</span>}
+            {preview.given && <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-primary">Given sheet found</span>}
           </div>
+          {preview.given && <div className="max-h-40 overflow-y-auto rounded-lg border border-primary/30 bg-primary/5 p-2 text-xs"><b className="mb-1 flex items-center gap-1 text-primary"><Calculator className="h-3.5 w-3.5" />Given (students can open it any time)</b><GivenSheet text={preview.given} className="!text-xs" /></div>}
           {preview.notes.map((n) => <p key={n} className="rounded-lg border border-warning/40 bg-warning/10 p-2 text-xs text-warning">{n}</p>)}
           {missing > 0 && <p className="rounded-lg border border-warning/40 bg-warning/10 p-2 text-xs text-warning">{missing} question(s) have no answer on the paper. Choose the correct answer for them in the editor before submitting.</p>}
           <ol className="max-h-96 space-y-3 overflow-y-auto rounded-lg border border-border p-2 text-xs">
@@ -246,7 +256,7 @@ function Importer({ auth, subject, onImport }: { auth: Auth; subject: string; on
           </ol>
           <Btn className="w-full" onClick={() => {
             const stamp = Date.now();
-            onImport(preview.name.replace(/\.\w+$/, "").slice(0, 120), preview.qs.map((q, i) => ({ id: `q${stamp}${i}`, text: q.text, options: q.options, answer: q.answer ?? 0, marks: q.marks, passage: q.passage ?? undefined, figure: q.figurePath })));
+            onImport(preview.name.replace(/\.\w+$/, "").slice(0, 120), preview.qs.map((q, i) => ({ id: `q${stamp}${i}`, text: q.text, options: q.options, answer: q.answer ?? 0, marks: q.marks, passage: q.passage ?? undefined, figure: q.figurePath })), preview.given ?? "");
             setPreview(null);
           }}>Create bank from paper</Btn>
         </div>
@@ -255,7 +265,8 @@ function Importer({ auth, subject, onImport }: { auth: Auth; subject: string; on
   );
 }
 
-function Editor({ auth, draft, setDraft, onSave }: { auth: Auth; draft: Draft; setDraft: (d: Draft) => void; onSave: (s: Draft["status"]) => void }) {
+function Editor({ auth, draft, setDraft, onSave, onRemoveAll }: { auth: Auth; draft: Draft; setDraft: (d: Draft) => void; onSave: (s: Draft["status"]) => void; onRemoveAll: () => void }) {
+  const [givenOpen, setGivenOpen] = useState(false);
   const upload = useServerFn(teacherUploadFigure);
   const figureUrl = useFigureUrls(auth, draft.questions.map((q) => q.figure));
   const [picBusy, setPicBusy] = useState<string | null>(null); const [picErr, setPicErr] = useState("");
@@ -280,6 +291,18 @@ function Editor({ auth, draft, setDraft, onSave }: { auth: Auth; draft: Draft; s
       <div className="mb-4 flex items-center gap-3">
         <input className="field" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
         <span className="whitespace-nowrap text-xs text-muted-foreground">{draft.questions.length} Q · {totalMarks} marks</span>
+        <button type="button" disabled={!draft.questions.length} onClick={onRemoveAll} aria-label="Remove all questions" title="Remove all questions from this bank" className="flex shrink-0 items-center gap-1 rounded-full border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:border-destructive hover:text-destructive disabled:opacity-40"><ListX className="h-4 w-4" /><span className="hidden sm:inline">Remove all</span></button>
+      </div>
+      <div className="mb-3 rounded-lg border border-primary/30 bg-primary/5 p-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-primary">
+          <span className="flex items-center gap-1"><Calculator className="h-3.5 w-3.5" />Given — values, formulas or tables students may use during the exam</span>
+          <button type="button" className="text-muted-foreground hover:text-primary" onClick={() => setGivenOpen(!givenOpen)}>{givenOpen ? "Done" : draft.given ? "Edit" : "Add"}</button>
+        </div>
+        {givenOpen && <>
+          <textarea className="field mt-2 min-h-24 text-sm" maxLength={MAX_GIVEN} rows={Math.min(14, Math.max(4, draft.given.split("\n").length + 1))} value={draft.given} placeholder={"e.g. Take $g = 10\\,\\text{m/s}^2$\nFor a table, put each row on its own line and separate cells with |\nElement | Atomic mass\nH | 1\nO | 16"} onChange={(e) => setDraft({ ...draft, given: e.target.value })} />
+          {draft.given.trim() && <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-primary">Students will see</div>}
+        </>}
+        {draft.given.trim() ? <GivenSheet text={draft.given} className="mt-1 max-h-60 overflow-y-auto" /> : !givenOpen && <p className="mt-1 text-xs text-muted-foreground">None. It is filled in by itself when the uploaded paper has a “Given” part; students open it with a “Given” button at any time.</p>}
       </div>
       <p className="mb-3 rounded-lg border border-border bg-secondary/40 p-2 text-xs text-muted-foreground"><Sigma className="mr-1 inline h-3.5 w-3.5 text-primary" />Formulas: type them between $ signs, e.g. <code>$x^2+\frac{"{1}{2}"}$</code>, <code>$\sqrt{"{3}"}$</code>, <code>$\ce{"{H2SO4}"}$</code>. A preview under the question shows exactly how students will see it.</p>
       {picErr && <p role="alert" className="mb-2 text-xs text-destructive">{picErr}</p>}

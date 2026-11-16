@@ -61,3 +61,4 @@
 - [ ] Point the Vercel project at this repository (waiting on the user)
 - [x] Back to Round 1; Director reset deletes results everywhere so students can retake
 - [x] Show the school logo (browser icon and link previews) on the Vercel site
+- [x] Teacher: remove all questions from a bank; paper's Given sheet read automatically and opened by students any time; passages read in full with a large reading view

@@ -226,6 +226,7 @@ export type Database = {
       question_banks: {
         Row: {
           created_at: string
+          given: string | null
           id: string
           questions: Json
           status: string
@@ -237,6 +238,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          given?: string | null
           id?: string
           questions?: Json
           status?: string
@@ -248,6 +250,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          given?: string | null
           id?: string
           questions?: Json
           status?: string

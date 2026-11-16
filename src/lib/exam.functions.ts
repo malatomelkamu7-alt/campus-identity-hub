@@ -3,7 +3,7 @@ import { z } from "zod";
 import { teacherStream, canTakeStream, teacherCredentialKey, RESULT_PIN, hashResultPin, uploadSubjects } from "@/lib/admin-rules";
 import { canStartExam, personalDeadline, readmitDeadline, remainingSeconds, DISCONNECT_GRACE_SEC, admittedToRoom, activeBankIds, HELP_COOLDOWN_SEC, helpMessage } from "@/lib/exam-timing";
 import { normalizeName, requirePasscode, shouldBlock, shuffle, subjectsFor } from "@/lib/identity";
-import { FIGURE_PATH, MAX_OPTION, MAX_PASSAGE, MAX_TEXT, MAX_PAPER_PAGES, groupByPassage } from "@/lib/paper";
+import { FIGURE_PATH, MAX_GIVEN, MAX_OPTION, MAX_PASSAGE, MAX_TEXT, MAX_PAPER_PAGES, groupByPassage, bankSaveProblem } from "@/lib/paper";
 
 async function admin() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -306,12 +306,19 @@ export const teacherSaveBank = createServerFn({ method: "POST" })
     passcode: pass, teacherId: z.string().max(30), id: z.string().uuid().optional(),
     subject: z.string().min(1).max(40), title: z.string().trim().min(1).max(120), status: z.enum(["draft", "queued"]),
     questions: z.array(questionSchema).max(300),
+    // Values, constants, formulas and data tables students may open at any time during the exam.
+    given: z.string().trim().max(MAX_GIVEN).nullish().transform((v) => v || null),
   }).parse(d))
   .handler(async ({ data }) => {
     const t = await teacher(data.passcode, data.teacherId);
     if (!t.subjects.includes(data.subject)) throw new Error("You can only upload questions for your own subject.");
     const sb = await admin();
-    const row = { target_stream: teacherStream(t.stream, t.id), subject: data.subject, title: data.title, status: data.status, questions: data.questions, teacher_id: t.id, updated_at: now() };
+    if (!data.questions.length) {
+      const s = data.id ? await settings() : null;
+      const problem = bankSaveProblem(data.status, 0, !!s && s.exam_live && activeBankIds(s).includes(data.id!));
+      if (problem) throw new Error(problem);
+    }
+    const row = { target_stream: teacherStream(t.stream, t.id), subject: data.subject, title: data.title, status: data.status, questions: data.questions, given: data.given, teacher_id: t.id, updated_at: now() };
     const res = data.id
       ? await sb.from("question_banks").update(row).eq("id", data.id).eq("teacher_id", t.id).select("id").single()
       : await sb.from("question_banks").insert(row).select("id").single();
@@ -332,9 +339,9 @@ export const teacherScanPaper = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     await teacher(data.passcode, data.teacherId);
     const { scanPaper } = await import("@/lib/paper.server");
-    const questions = await scanPaper(data);
+    const { questions, given } = await scanPaper(data);
     if (!questions.length) throw new Error("No multiple-choice questions were found in this paper. Check that each question has its choices (A, B, C, D).");
-    return { questions };
+    return { questions, given };
   });
 
 /** Saves one question picture (JPEG) into the teacher's private folder. */
@@ -428,7 +435,7 @@ export const studentExam = createServerFn({ method: "POST" })
       id: q.id, text: q.text, marks: q.marks, passage: q.passage ?? null, figureUrl: q.figure ? links[q.figure] ?? null : null,
       choices: shuffle([0, 1, 2, 3], st.student_code + q.id + s.current_round).map((orig) => ({ value: orig, label: q.options[orig] })),
     }));
-    return { attemptId: att.id, currentQuestion: att.current_question, pauseReason: att.pause_reason, paused: !!att.paused_at && att.status === "in_progress", attemptStatus: att.status, answers: att.answers as Record<string, number>, violations: att.violations, secondsLeft: left, examLive: s.exam_live, title: bank.title, subject: bank.subject, paper };
+    return { attemptId: att.id, currentQuestion: att.current_question, pauseReason: att.pause_reason, paused: !!att.paused_at && att.status === "in_progress", attemptStatus: att.status, answers: att.answers as Record<string, number>, violations: att.violations, secondsLeft: left, examLive: s.exam_live, title: bank.title, subject: bank.subject, given: bank.given ?? null, paper };
   });
 
 export const studentSync = createServerFn({ method: "POST" })

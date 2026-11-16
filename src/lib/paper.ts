@@ -108,3 +108,41 @@ export const FIGURE_PATH = /^[A-Za-z0-9-]{1,30}\/[a-f0-9-]{36}\.jpg$/;
 export const PAPER_ACCEPT = ".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp";
 export const MAX_PAPER_BYTES = 25 * 1024 * 1024;
 export const MAX_PAPER_PAGES = 30;
+
+/** Longest "Given" sheet (values, constants, formulas, data tables) a paper may carry. */
+export const MAX_GIVEN = 8000;
+
+/** The paper's "Given" sheet from the reader's reply, or null when the paper gives nothing to use during the exam. */
+export function readGiven(parsed: unknown): string | null {
+  const g = (parsed as { given?: unknown } | null)?.given;
+  if (typeof g !== "string") return null;
+  const text = g.replace(/\r\n?/g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, MAX_GIVEN);
+  return text && !/^(none|n\/a|null|-)$/i.test(text) ? text : null;
+}
+
+export type GivenBlock = { kind: "text"; text: string } | { kind: "table"; rows: string[][] };
+const isRow = (l: string) => /\s\|\s/.test(l) || /^\s*\|.*\|\s*$/.test(l);
+const isRule = (l: string) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l);
+
+/** Splits a "Given" sheet into plain lines and tables (rows written with cells separated by " | "). */
+export function givenBlocks(text: string): GivenBlock[] {
+  const out: GivenBlock[] = [];
+  for (const line of text.split("\n")) {
+    const last = out[out.length - 1];
+    if (isRule(line)) continue;
+    if (isRow(line)) {
+      const cells = line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+      if (last?.kind === "table") last.rows.push(cells); else out.push({ kind: "table", rows: [cells] });
+    } else if (last?.kind === "text") last.text += `\n${line}`;
+    else out.push({ kind: "text", text: line });
+  }
+  return out.map((b) => (b.kind === "text" ? { ...b, text: b.text.trim() } : b)).filter((b) => b.kind === "table" || b.text);
+}
+
+/** Why a paper can't be saved like this, or null. A submitted or live paper must keep at least one question. */
+export function bankSaveProblem(status: "draft" | "queued", questionCount: number, inLiveExam: boolean): string | null {
+  if (questionCount > 0) return null;
+  if (inLiveExam) return "This paper is being used in the live exam right now, so its questions can't all be removed. Wait until the exam is closed.";
+  if (status === "queued") return "Add at least one question before submitting to the Director.";
+  return null;
+}
