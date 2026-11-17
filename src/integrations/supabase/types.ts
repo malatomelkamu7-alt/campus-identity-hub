@@ -25,6 +25,7 @@ export type Database = {
           last_seen_at: string | null
           pause_reason: string | null
           paused_at: string | null
+          practice: boolean
           results_reset_at: string | null
           round: number
           score: number | null
@@ -45,6 +46,7 @@ export type Database = {
           last_seen_at?: string | null
           pause_reason?: string | null
           paused_at?: string | null
+          practice?: boolean
           results_reset_at?: string | null
           round: number
           score?: number | null
@@ -65,6 +67,7 @@ export type Database = {
           last_seen_at?: string | null
           pause_reason?: string | null
           paused_at?: string | null
+          practice?: boolean
           results_reset_at?: string | null
           round?: number
           score?: number | null
@@ -162,6 +165,7 @@ export type Database = {
           extension_sec: number
           hidden_staff_roles: string[]
           id: number
+          practice_mode: boolean
           registration_open: boolean
           results_published: boolean
           sat_enabled: boolean
@@ -183,6 +187,7 @@ export type Database = {
           extension_sec?: number
           hidden_staff_roles?: string[]
           id?: number
+          practice_mode?: boolean
           registration_open?: boolean
           results_published?: boolean
           sat_enabled?: boolean
@@ -204,6 +209,7 @@ export type Database = {
           extension_sec?: number
           hidden_staff_roles?: string[]
           id?: number
+          practice_mode?: boolean
           registration_open?: boolean
           results_published?: boolean
           sat_enabled?: boolean

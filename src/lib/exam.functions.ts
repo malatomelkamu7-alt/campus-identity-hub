@@ -109,7 +109,7 @@ export const getPublicState = createServerFn({ method: "GET" }).handler(async ()
   const banks = [bank, social ? { id: social.id, title: social.title, subject: social.subject, stream: social.target_stream, count: (social.questions as Question[]).length, marks: (social.questions as Question[]).reduce((n,q) => n + q.marks,0) } : null].filter((b) => b !== null);
   return {
     hiddenStaffRoles: s.hidden_staff_roles, banks,
-    examLive: s.exam_live, resultsPublished: s.results_published, registrationOpen: s.registration_open, satEnabled: s.sat_enabled,
+    examLive: s.exam_live, resultsPublished: s.results_published, registrationOpen: s.registration_open, satEnabled: s.sat_enabled, practiceMode: s.practice_mode,
     round: s.current_round, clockRunning: canStartExam(s.exam_live, s.scheduled_start, s.scheduled_close), secondsLeft: 0, durationMin: (s.duration_sec + s.extension_sec) / 60, scheduledStart: s.scheduled_start, scheduledClose: s.scheduled_close, bank,
   };
 });
@@ -155,7 +155,7 @@ export const directorDashboard = createServerFn({ method: "POST" })
       const k = key.split("|").slice(0, 2).join("|"); flagCounts[k] = (flagCounts[k] ?? 0) + 1;
     }
     return {
-      settings: { autoClose: s.auto_close, autoCompleted: s.auto_completed, autoSchedule: s.auto_schedule, examLive: s.exam_live, resultsPublished: s.results_published, satEnabled: s.sat_enabled, round: s.current_round, activeBankId: s.active_bank_id, socialBankId: s.social_bank_id, selectedStudentCodes: s.selected_student_codes, durationMin: Math.round(s.duration_sec / 60), extensionMin: s.extension_sec / 60, scheduledStart: s.scheduled_start, scheduledClose: s.scheduled_close, secondsLeft: 0, clockRunning: s.exam_live },
+      settings: { autoClose: s.auto_close, autoCompleted: s.auto_completed, autoSchedule: s.auto_schedule, examLive: s.exam_live, resultsPublished: s.results_published, satEnabled: s.sat_enabled, practiceMode: s.practice_mode, round: s.current_round, activeBankId: s.active_bank_id, socialBankId: s.social_bank_id, selectedStudentCodes: s.selected_student_codes, durationMin: Math.round(s.duration_sec / 60), extensionMin: s.extension_sec / 60, scheduledStart: s.scheduled_start, scheduledClose: s.scheduled_close, secondsLeft: 0, clockRunning: s.exam_live },
       banks: (banks.data ?? []).map((b) => ({ id: b.id, title: b.title, subject: b.subject, teacherId: b.teacher_id, stream: b.target_stream, count: (b.questions as Question[]).length })),
       students: students.data ?? [],
       participationStudents: s.exam_live && s.scheduled_start && s.scheduled_close ? (students.data ?? []).filter(st => st.face_verified && admittedToRoom(st.student_code, s.selected_student_codes) && (banks.data ?? []).some(b => activeBankIds(s).includes(b.id) && canTakeStream(st.stream, b.target_stream))) : [], attempts: s.exam_live ? attempts.data ?? [] : [], events: events.data ?? [], results: results.data ?? [],
@@ -167,7 +167,7 @@ export const directorDashboard = createServerFn({ method: "POST" })
 export const directorUpdate = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({
     passcode: pass,
-    autoSchedule: z.boolean().optional(), examLive: z.boolean().optional(), resultsPublished: z.boolean().optional(), satEnabled: z.boolean().optional(), autoClose: z.boolean().optional(),
+    autoSchedule: z.boolean().optional(), examLive: z.boolean().optional(), resultsPublished: z.boolean().optional(), satEnabled: z.boolean().optional(), practiceMode: z.boolean().optional(), autoClose: z.boolean().optional(),
     clearStream: z.enum(["Natural Science", "Social Science"]).optional(),
     activeBankId: z.string().uuid().nullable().optional(), selectedStudentCodes: z.array(z.string().min(3).max(30)).max(2000).nullable().optional(), durationMin: z.number().int().min(5).max(600).optional(),
     scheduledStart: z.string().datetime().optional(), scheduledClose: z.string().datetime().optional(),
@@ -198,6 +198,12 @@ export const directorUpdate = createServerFn({ method: "POST" })
     if (data.clearStream) { if (data.clearStream === "Social Science") patch.social_bank_id = null; else patch.active_bank_id = null; patch.auto_completed = false; }
     if (data.resultsPublished !== undefined) patch.results_published = data.resultsPublished;
     if (data.satEnabled !== undefined) patch.sat_enabled = data.satEnabled;
+    if (data.practiceMode !== undefined) {
+      if (s.exam_live) throw new Error("Close the session before switching between practice and real exam.");
+      patch.practice_mode = data.practiceMode;
+      // Practice attempts never stay around: clearing them keeps official marks clean and lets students start fresh.
+      await sb.from("exam_attempts").delete().eq("practice", true);
+    }
     if (data.activeBankId !== undefined) { if (chosenStream === "Social Science") patch.social_bank_id = data.activeBankId; else patch.active_bank_id = data.activeBankId; patch.extension_sec = 0; patch.auto_completed = false; }
     if (data.selectedStudentCodes !== undefined) {
       const { data: enrolled } = await sb.from("registered_students").select("student_code").eq("face_verified",true);
@@ -389,6 +395,13 @@ async function activeContext(stream: string) {
   return { s, bank: { ...bank, questions: bank.questions as Question[] } };
 }
 
+function practiceReview(questions: { id: string; answer: number | null; marks: number }[], answers: Record<string, number>) {
+  let score = 0, total = 0;
+  const correct: Record<string, number> = {};
+  for (const q of questions) { total += q.marks; if (q.answer !== null) correct[q.id] = q.answer; if (q.answer !== null && answers[q.id] === q.answer) score += q.marks; }
+  return { score, total, correct };
+}
+
 async function finalize(attemptId: string, answers: Record<string, number>, status: "submitted" | "blocked", violations: number) {
   const sb = await admin();
   const { error } = await sb.rpc("save_exam_submission", { p_attempt: attemptId, p_answers: answers, p_status: status, p_violations: violations });
@@ -407,14 +420,14 @@ export const studentExam = createServerFn({ method: "POST" })
     if (!att) {
       if (!admittedToRoom(st.student_code, s.selected_student_codes)) throw new Error("You are not selected for this exam room. Wait for the Director to admit your group.");
       if (!canStartExam(s.exam_live, s.scheduled_start, s.scheduled_close)) throw new Error("The exam is not open right now.");
-      const ins = await sb.from("exam_attempts").insert({ round: s.current_round, bank_id: bank.id, student_code: st.student_code, deadline_at: personalDeadline(now(), s.duration_sec, s.extension_sec), last_seen_at: now() }).select("*").single();
+      const ins = await sb.from("exam_attempts").insert({ round: s.current_round, bank_id: bank.id, student_code: st.student_code, practice: s.practice_mode, deadline_at: personalDeadline(now(), s.duration_sec, s.extension_sec), last_seen_at: now() }).select("*").single();
       if (ins.error) {
         if (ins.error.code !== "23505") throw new Error("Could not start the exam.");
         const existing = await sb.from("exam_attempts").select("*").eq("round", s.current_round).eq("bank_id", bank.id).eq("student_code", st.student_code).single();
         if (existing.error || !existing.data) throw new Error("Could not resume the exam.");
         att = existing.data;
       } else att = ins.data;
-      await sb.from("exam_events").insert({ kind: "start", student_code: st.student_code, round: s.current_round, message: `Started ${bank.title}` });
+      if (!s.practice_mode) await sb.from("exam_events").insert({ kind: "start", student_code: st.student_code, round: s.current_round, message: `Started ${bank.title}` });
     }
     if (att.status === "in_progress" && att.pause_reason === "readmit" && att.paused_at) {
       // Re-admitted by the Director: the clock starts again now that the student is back on the exam.
@@ -435,7 +448,7 @@ export const studentExam = createServerFn({ method: "POST" })
       id: q.id, text: q.text, marks: q.marks, passage: q.passage ?? null, figureUrl: q.figure ? links[q.figure] ?? null : null,
       choices: shuffle([0, 1, 2, 3], st.student_code + q.id + s.current_round).map((orig) => ({ value: orig, label: q.options[orig] })),
     }));
-    return { attemptId: att.id, currentQuestion: att.current_question, pauseReason: att.pause_reason, paused: !!att.paused_at && att.status === "in_progress", attemptStatus: att.status, answers: att.answers as Record<string, number>, violations: att.violations, secondsLeft: left, examLive: s.exam_live, title: bank.title, subject: bank.subject, given: bank.given ?? null, paper };
+    return { attemptId: att.id, currentQuestion: att.current_question, pauseReason: att.pause_reason, paused: !!att.paused_at && att.status === "in_progress", attemptStatus: att.status, answers: att.answers as Record<string, number>, violations: att.violations, secondsLeft: left, examLive: s.exam_live, title: bank.title, subject: bank.subject, given: bank.given ?? null, practice: att.practice, paper };
   });
 
 export const studentSync = createServerFn({ method: "POST" })
@@ -456,7 +469,7 @@ export const studentSync = createServerFn({ method: "POST" })
     let violations = att.violations;
     if (data.violation && !paused) {
       violations += 1;
-      await sb.from("exam_events").insert({ kind: "violation", student_code: st.student_code, round: s.current_round, message: `${st.full_name} ${data.violation === "fullscreen" ? "left fullscreen" : "switched away from the exam"} (${violations})` });
+      if (!att.practice) await sb.from("exam_events").insert({ kind: "violation", student_code: st.student_code, round: s.current_round, message: `${st.full_name} ${data.violation === "fullscreen" ? "left fullscreen" : "switched away from the exam"} (${violations})` });
     }
     if (data.connectionLost && !paused) {
       // The timer stops at the last moment the device was in contact, so no time is lost while it was offline.
@@ -466,7 +479,13 @@ export const studentSync = createServerFn({ method: "POST" })
       return { pauseReason: "connection", paused: true, status: "in_progress", violations, secondsLeft: secondsLeft(att.deadline_at, Date.parse(frozenAt)), examLive: s.exam_live, timeUp: false };
     }
     const timeUp = !paused && (left <= 0 || !s.exam_live);
-    if (shouldBlock(violations)) {
+    if (att.practice && ((!paused && data.submit) || timeUp)) {
+      // Practice: mark it, show the answers straight away, then forget the attempt so nothing official changes and the student can retry.
+      const review = practiceReview(bank.questions, data.answers);
+      await sb.from("exam_attempts").delete().eq("id", att.id);
+      return { pauseReason: null, paused: false, status: "submitted", violations, secondsLeft: left, examLive: s.exam_live, timeUp, review };
+    }
+    if (shouldBlock(violations) && !att.practice) {
       await finalize(att.id, data.answers, "blocked", violations);
       await sb.from("exam_events").insert({ kind: "blocked", student_code: st.student_code, round: s.current_round, message: `${st.full_name} was auto-submitted and blocked after ${violations} violations` });
       return { pauseReason: null, paused: false, status: "blocked", violations, secondsLeft: left, examLive: s.exam_live, timeUp: false };

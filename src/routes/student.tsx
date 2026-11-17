@@ -264,6 +264,7 @@ function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void 
   const [askSubmit, setAskSubmit] = useState(false);
   const [showGiven, setShowGiven] = useState(false);
   const [ended, setEnded] = useState<null | "submitted" | "blocked" | "timeup">(null);
+  const [review, setReview] = useState<{ score: number; total: number; correct: Record<string, number> } | null>(null);
   const answersRef = useRef(answers); answersRef.current = answers;
   const endedRef = useRef(ended); endedRef.current = ended;
   const idxRef = useRef(idx); idxRef.current = idx;
@@ -284,6 +285,7 @@ function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void 
       const r = await sync({ data: { ...who, answers: answersRef.current, current: idxRef.current, ...(wasOffline ? { connectionLost: true } : extra) } });
       setErr(""); offlineRef.current = false; setOffline(false);
       setViolations(r.violations); setLeft(r.secondsLeft); setPaused(r.paused); setPauseReason(r.pauseReason);
+      if ("review" in r && r.review) setReview(r.review);
       if (r.status !== "in_progress") {
         endedRef.current = r.status === "blocked" ? "blocked" : r.timeUp ? "timeup" : "submitted";
         setEnded(endedRef.current);
@@ -363,6 +365,38 @@ function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void 
     catch (e) { setHelp("idle"); setErr(e instanceof Error ? e.message : "Could not send your help request. Raise your hand."); }
   };
 
+  // Practice: the score and every right answer show straight after submitting, and the student can try again.
+  if (ended && review && paper) return (
+    <div className="mx-auto max-w-3xl space-y-4 p-4">
+      <div className="glass p-6 text-center">
+        <span className="rounded-full border border-warning/50 px-3 py-1 text-xs text-warning">Practice — not an official result</span>
+        <h1 className="mt-3 text-2xl font-bold">{ended === "timeup" ? "Time is up!" : "Practice finished"}</h1>
+        <p className="mt-2 text-4xl font-bold text-primary">{review.score} / {review.total}</p>
+        <p className="text-sm text-muted-foreground">{review.total ? Math.round(review.score * 100 / review.total) : 0}%</p>
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          <Btn variant="accent" onClick={() => { setReview(null); setAnswers({}); setIdx(0); setEnded(null); endedRef.current = null; openExam().catch((e) => setErr(e instanceof Error ? e.message : "Could not start again.")); }}>Practice again</Btn>
+          <Btn variant="ghost" onClick={onExit}>Back to portal</Btn>
+        </div>
+        {err && <p className="mt-2 text-sm text-destructive">{err}</p>}
+      </div>
+      {paper.paper.map((q, i) => {
+        const mine = answers[q.id]; const right = review.correct[q.id];
+        const ok = mine !== undefined && mine === right;
+        return (
+          <div key={q.id} className={`glass p-4 ${ok ? "border-accent/50" : "border-destructive/50"}`}>
+            <div className="flex items-start gap-2"><span className={`font-bold ${ok ? "text-accent" : "text-destructive"}`}>{i + 1}.</span><div className="min-w-0 flex-1"><MathText text={q.text} /></div><span className={`text-xs ${ok ? "text-accent" : "text-destructive"}`}>{ok ? "Correct" : mine === undefined ? "Not answered" : "Wrong"}</span></div>
+            <ul className="mt-2 space-y-1 text-sm">
+              {q.choices.map((c, j) => (
+                <li key={c.value} className={`rounded-lg border px-3 py-1.5 ${c.value === right ? "border-accent/60 bg-accent/10" : c.value === mine ? "border-destructive/60 bg-destructive/10" : "border-border"}`}>
+                  <span className="font-semibold">{"ABCD"[j]}.</span> <MathText text={c.label ?? ""} />{c.value === right ? " ✓" : c.value === mine ? " ✗ your answer" : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
   if (ended) return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="glass max-w-md p-8 text-center">
@@ -397,6 +431,7 @@ function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void 
           <div className="text-sm"><div className="font-semibold">{paper.title}</div><div className="text-xs text-muted-foreground">{student.id} · {answeredCount}/{paper.paper.length} answered</div></div>
           <span className={`rounded-full border border-border px-2.5 py-1 font-mono text-sm font-bold lg:hidden ${left < 300 ? "text-destructive" : "text-primary"}`} aria-label="Time left">{fmt(left)}</span>
           <span className={`ml-auto flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${violations ? "border-destructive/50 text-destructive" : "border-accent/40 text-accent"}`}><AlertTriangle className="h-3.5 w-3.5" />{violations}/3 warnings</span>
+          {paper.practice && <span className="rounded-full border border-warning/50 px-2.5 py-1 text-xs text-warning">Practice</span>}
           {paper.given && <Btn variant="ghost" className="px-3" onClick={() => setShowGiven(true)} title="Values, formulas and tables you may use" aria-label="Open the Given sheet"><Calculator className="h-4 w-4 text-primary" /><span>Given</span></Btn>}
           <Btn variant="ghost" className="px-3" disabled={help !== "idle"} onClick={askHelp} title="Ask the Director for help" aria-label="Ask the Director for help"><LifeBuoy className={`h-4 w-4 ${help === "sent" ? "text-accent" : "text-warning"}`} /><span>{help === "sent" ? "Help sent" : help === "sending" ? "Sending…" : "Help"}</span></Btn>
           <Btn variant="accent" onClick={() => setAskSubmit(true)}>Submit</Btn>

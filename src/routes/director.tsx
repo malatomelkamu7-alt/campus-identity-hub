@@ -117,6 +117,7 @@ function Console({ pass, onPass }: { pass: string; onPass: (p: string) => void }
             <Row label="Exam session open" desc={sessionDesc(s)}>{s.examLive && s.autoClose && !s.autoSchedule
               ? <span className="flex items-center gap-1.5 rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-xs font-medium text-accent" title="Turn Auto close off in Settings to close it yourself"><DoorClosed className="h-3.5 w-3.5" />Auto close</span>
               : <Toggle label="Exam session open" on={s.examLive} onChange={(v) => !s.autoSchedule && act(() => update({ data: { passcode: pass, examLive: v } }))} />}</Row>
+            <Row label={<span className="flex items-center gap-1.5"><BookOpenCheck className="h-3.5 w-3.5" />Practice mode</span>} desc={s.practiceMode ? "Practice — students see their score and answers right away, can retry, are never blocked, and nothing goes into official results" : "Real exam — official marks and full rules"}><Toggle label="Practice mode" on={s.practiceMode} onChange={(v) => act(() => update({ data: { passcode: pass, practiceMode: v } }))} /></Row>
             <Row label={<span className="flex items-center gap-1.5"><Megaphone className="h-3.5 w-3.5" />Publish results</span>} desc={s.resultsPublished ? "Scorecards visible" : "Scorecards hidden"}><Toggle label="Publish results" on={s.resultsPublished} onChange={(v) => act(() => update({ data: { passcode: pass, resultsPublished: v } }))} /></Row>
           </div>
         </Panel>
