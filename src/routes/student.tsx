@@ -12,6 +12,10 @@ import { HEARTBEAT_MS, HELP_COOLDOWN_SEC } from "@/lib/exam-timing";
 import { enterFullscreen, exitFullscreen, inFullscreen, fullscreenSupported, FULLSCREEN_EVENTS } from "@/lib/fullscreen";
 import { usePublicState } from "@/lib/live";
 import { studentExam, studentSync, studentFlag, studentResults, studentHelp } from "@/lib/exam.functions";
+import { studentQuizOpen, studentQuizSync } from "@/lib/quiz.functions";
+import { QUIZ_MAX_WARNINGS } from "@/lib/quiz-rules";
+import { MAX_VIOLATIONS } from "@/lib/identity";
+import { ClassQuizzes } from "@/components/ClassQuizzes";
 import { registerStudent, loginStudent, checkRegistrationName, studentPing, studentSignOut, type PublicStudent } from "@/lib/students.functions";
 
 export const Route = createFileRoute("/student")({
@@ -33,6 +37,7 @@ const SESSION = "bhss-student-session";
 function StudentPage() {
   const [student, setStudent] = useState<PublicStudent | null>(null);
   const [mode, setMode] = useState<"home" | "exam" | "results">("home");
+  const [quizId, setQuizId] = useState<string | null>(null);
   const [gate, setGate] = useState<"choose" | "login" | "register">("choose");
   const login = useServerFn(loginStudent);
   const ping = useServerFn(studentPing);
@@ -87,7 +92,7 @@ function StudentPage() {
       ) : <Register onDone={signIn} onBack={() => setGate("choose")} />)}
     </Shell>
   );
-  if (mode === "exam") return <Exam student={student} onExit={() => setMode("home")} />;
+  if (mode === "exam") return <Exam student={student} quizId={quizId} onExit={() => { setMode("home"); setQuizId(null); }} />;
   const first = student.name.split(" ")[0];
   return (
     <Shell title="Student Portal" subtitle="Burka Harbu Special Secondary School · Exam Portal" help>
@@ -103,7 +108,7 @@ function StudentPage() {
         <button onClick={() => setMode("home")} className={`tile tile-hover text-left ${mode === "home" ? "tile-active" : ""}`}><span className="tile-icon"><ClipboardList className="h-5 w-5" /></span><div className="mt-3 font-semibold">Exams</div><div className="text-sm text-muted-foreground">Scheduled tests</div></button>
         <button onClick={() => setMode("results")} className={`tile tile-hover text-left ${mode === "results" ? "tile-active" : ""}`}><span className="tile-icon"><BarChart3 className="h-5 w-5" /></span><div className="mt-3 font-semibold">My results</div><div className="text-sm text-muted-foreground">Official scorecard</div></button>
       </div>
-      {mode === "home" ? <ExamLobby stream={student.stream} onStart={() => setMode("exam")} /> : <Results student={student} initialPin={resultPin} />}
+      {mode === "home" ? <><ClassQuizzes student={student} onStart={(id) => { setQuizId(id); setMode("exam"); }} /><ExamLobby stream={student.stream} onStart={() => setMode("exam")} /></> : <Results student={student} initialPin={resultPin} />}
     </Shell>
   );
 }
@@ -237,9 +242,18 @@ function ExamLobby({ onStart, stream }: { onStart: () => void; stream: string })
 }
 
 type Paper = Awaited<ReturnType<typeof studentExam>>;
-function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void }) {
-  const load = useServerFn(studentExam);
-  const sync = useServerFn(studentSync);
+function Exam({ student, onExit, quizId = null }: { student: PublicStudent; onExit: () => void; quizId?: string | null }) {
+  const loadExam = useServerFn(studentExam);
+  const syncExam = useServerFn(studentSync);
+  const loadQuiz = useServerFn(studentQuizOpen);
+  const syncQuiz = useServerFn(studentQuizSync);
+  // A teacher's class quiz uses the same strict exam screen, but with its own questions and a 2-warning limit.
+  const isQuiz = !!quizId;
+  const maxWarn = isQuiz ? QUIZ_MAX_WARNINGS : MAX_VIOLATIONS;
+  const load = (a: { data: { name: string; id: string; token: string } }): Promise<Paper> => quizId ? loadQuiz({ data: { ...a.data, quizId } }) : loadExam(a);
+  type SyncIn = { name: string; id: string; token: string; answers: Record<string, number>; current?: number; violation?: "fullscreen" | "focus"; submit?: boolean; connectionLost?: boolean };
+  type SyncOut = { pauseReason: string | null; paused: boolean; status: string; violations: number; secondsLeft: number; timeUp: boolean; review?: { score: number; total: number; correct: Record<string, number> } };
+  const sync = (a: { data: SyncIn }): Promise<SyncOut> => quizId ? syncQuiz({ data: { ...a.data, quizId } }) : syncExam(a);
   const flagFn = useServerFn(studentFlag);
   const helpFn = useServerFn(studentHelp);
   const [help, setHelp] = useState<"idle" | "sending" | "sent">("idle");
@@ -401,8 +415,10 @@ function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void 
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="glass max-w-md p-8 text-center">
         {ended === "blocked" ? <AlertTriangle className="mx-auto h-12 w-12 text-destructive" /> : <ShieldCheck className="mx-auto h-12 w-12 text-accent" />}
-        <h1 className="mt-4 text-2xl font-bold">{ended === "blocked" ? "You have been removed from the exam" : ended === "timeup" ? "Time is up!" : "Exam submitted"}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{ended === "blocked" ? "You left the exam screen more than 3 times. Your answers were saved. Only the Director can re-admit you — keep this page open and your exam opens again here as soon as you are re-admitted." : "Your answers are sealed. Scores appear in “My results” once the Director publishes them."}</p>
+        <h1 className="mt-4 text-2xl font-bold">{ended === "blocked" ? `You have been removed from the ${isQuiz ? "quiz" : "exam"}` : ended === "timeup" ? "Time is up!" : isQuiz ? "Quiz submitted" : "Exam submitted"}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{isQuiz
+          ? ended === "blocked" ? `You left the quiz screen more than ${maxWarn} times. Your answers were saved. Only your teacher can re-admit you — keep this page open and the quiz opens again here as soon as you are re-admitted.` : "Your answers are sealed. Your score and the right answers appear under “Class quizzes” once your teacher releases the results."
+          : ended === "blocked" ? "You left the exam screen more than 3 times. Your answers were saved. Only the Director can re-admit you — keep this page open and your exam opens again here as soon as you are re-admitted." : "Your answers are sealed. Scores appear in “My results” once the Director publishes them."}</p>
         <Btn className="mt-6" onClick={onExit}>Back to portal</Btn>
       </div>
     </div>
@@ -430,10 +446,10 @@ function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void 
           <img src="/school-logo.jpg" alt="" className="h-9 w-9 rounded-full" />
           <div className="text-sm"><div className="font-semibold">{paper.title}</div><div className="text-xs text-muted-foreground">{student.id} · {answeredCount}/{paper.paper.length} answered</div></div>
           <span className={`rounded-full border border-border px-2.5 py-1 font-mono text-sm font-bold lg:hidden ${left < 300 ? "text-destructive" : "text-primary"}`} aria-label="Time left">{fmt(left)}</span>
-          <span className={`ml-auto flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${violations ? "border-destructive/50 text-destructive" : "border-accent/40 text-accent"}`}><AlertTriangle className="h-3.5 w-3.5" />{violations}/3 warnings</span>
+          <span className={`ml-auto flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${violations ? "border-destructive/50 text-destructive" : "border-accent/40 text-accent"}`}><AlertTriangle className="h-3.5 w-3.5" />{violations}/{maxWarn} warnings</span>
           {paper.practice && <span className="rounded-full border border-warning/50 px-2.5 py-1 text-xs text-warning">Practice</span>}
           {paper.given && <Btn variant="ghost" className="px-3" onClick={() => setShowGiven(true)} title="Values, formulas and tables you may use" aria-label="Open the Given sheet"><Calculator className="h-4 w-4 text-primary" /><span>Given</span></Btn>}
-          <Btn variant="ghost" className="px-3" disabled={help !== "idle"} onClick={askHelp} title="Ask the Director for help" aria-label="Ask the Director for help"><LifeBuoy className={`h-4 w-4 ${help === "sent" ? "text-accent" : "text-warning"}`} /><span>{help === "sent" ? "Help sent" : help === "sending" ? "Sending…" : "Help"}</span></Btn>
+          {!isQuiz && <Btn variant="ghost" className="px-3" disabled={help !== "idle"} onClick={askHelp} title="Ask the Director for help" aria-label="Ask the Director for help"><LifeBuoy className={`h-4 w-4 ${help === "sent" ? "text-accent" : "text-warning"}`} /><span>{help === "sent" ? "Help sent" : help === "sending" ? "Sending…" : "Help"}</span></Btn>}
           <Btn variant="accent" onClick={() => setAskSubmit(true)}>Submit</Btn>
         </div>
         {help === "sent" && <p role="status" className="border-t border-border bg-accent/10 px-3 py-1.5 text-center text-xs text-accent">The Director has your name and ID and is coming to help. Stay in your seat — your time keeps running.</p>}
@@ -517,7 +533,7 @@ function Exam({ student, onExit }: { student: PublicStudent; onExit: () => void 
           </div>
           <div className="mt-6 flex flex-wrap gap-2">
             <Btn variant="ghost" disabled={idx === 0} onClick={() => setIdx(idx - 1)}><ChevronLeft className="h-4 w-4" />Prev</Btn>
-            <Btn variant="ghost" disabled={flagged.has(cur.id)} onClick={() => setFlagFor(cur.id)}><Flag className={`h-4 w-4 ${flagged.has(cur.id) ? "text-warning" : ""}`} />{flagged.has(cur.id) ? "Reported" : "Report question"}</Btn>
+            {!isQuiz && <Btn variant="ghost" disabled={flagged.has(cur.id)} onClick={() => setFlagFor(cur.id)}><Flag className={`h-4 w-4 ${flagged.has(cur.id) ? "text-warning" : ""}`} />{flagged.has(cur.id) ? "Reported" : "Report question"}</Btn>}
             <Btn className="ml-auto" disabled={idx === paper.paper.length - 1} onClick={() => setIdx(idx + 1)}>Next<ChevronRight className="h-4 w-4" /></Btn>
           </div>
         </div>

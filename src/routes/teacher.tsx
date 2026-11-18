@@ -2,11 +2,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { FileUp, PenSquare, Send, Trash2, Plus, Lock, Save, Flag, KeyRound, LogOut, Table2, Search, Loader2, BookOpen, ImagePlus, X, Sigma, Calculator, ListX } from "lucide-react";
+import { FileUp, PenSquare, Send, Trash2, Plus, Lock, Save, Flag, KeyRound, LogOut, Table2, Search, Loader2, BookOpen, ImagePlus, X, Sigma, Calculator, ListX, BookCheck } from "lucide-react";
 import { MathText, FigureImage, GivenSheet } from "@/components/MathText";
 import { hasMath } from "@/lib/math-text";
 import { PAPER_ACCEPT, MAX_PAPER_BYTES, MAX_GIVEN, type ScannedQuestion } from "@/lib/paper";
 import { Shell, Panel, Btn } from "@/components/Shell";
+import { TeacherQuizzes } from "@/components/TeacherQuizzes";
 import { listTeachers, teacherDashboard, teacherSaveBank, teacherRemoveBank, teacherRemoveFlag, teacherChangePassword, teacherMarks, teacherScanPaper, teacherUploadFigure, teacherFigureUrls, type Question } from "@/lib/exam.functions";
 
 export const Route = createFileRoute("/teacher")({
@@ -73,7 +74,7 @@ function Workspace({ auth, onOut, onPassword }: { auth: { tid: string; pw: strin
   const [draft, setDraft] = useState<Draft | null>(null);
   const [msg, setMsg] = useState(""); const [err, setErr] = useState("");
   const [picked, setPicked] = useState("");
-  const [view, setView] = useState<"banks" | "marks">("banks");
+  const [view, setView] = useState<"banks" | "marks" | "quizzes">("banks");
   const subjects = data?.teacher.subjects ?? [];
   const subject = subjects.includes(picked) ? picked : subjects[0] ?? "";
   useEffect(() => { if (data && !draft && data.banks[0]) setDraft(toDraft(data.banks[0])); }, [data, draft]);
@@ -102,10 +103,11 @@ function Workspace({ auth, onOut, onPassword }: { auth: { tid: string; pw: strin
         <div className="flex gap-1 rounded-full border border-border bg-secondary/50 p-1">
           <button type="button" onClick={() => setView("banks")} className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${view === "banks" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}><PenSquare className="h-3.5 w-3.5" />Question banks</button>
           <button type="button" onClick={() => setView("marks")} className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${view === "marks" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}><Table2 className="h-3.5 w-3.5" />My students' marks</button>
+          <button type="button" onClick={() => setView("quizzes")} className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${view === "quizzes" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}><BookCheck className="h-3.5 w-3.5" />Class quizzes</button>
         </div>
         <Btn variant="ghost" className="ml-auto" onClick={onOut}><LogOut className="h-4 w-4" />Sign out</Btn>
       </div>
-      {view === "marks" ? <Marks auth={auth} /> : <>
+      {view === "marks" ? <Marks auth={auth} /> : view === "quizzes" ? <TeacherQuizzes auth={auth} banks={data.banks} /> : <>
       {err && <p role="alert" className="mb-3 text-sm text-destructive">{err}</p>}
       {msg && <p role="status" className="mb-3 text-sm text-accent">{msg}</p>}
       <div className="grid gap-4 lg:grid-cols-3">

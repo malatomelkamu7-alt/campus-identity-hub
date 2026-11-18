@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      class_quizzes: {
+        Row: {
+          bank_id: string | null
+          closed_at: string | null
+          created_at: string
+          duration_sec: number
+          given: string | null
+          id: string
+          questions: Json
+          results_released: boolean
+          sections: string[]
+          status: string
+          stream: string
+          subject: string
+          teacher_id: string
+          title: string
+        }
+        Insert: {
+          bank_id?: string | null
+          closed_at?: string | null
+          created_at?: string
+          duration_sec?: number
+          given?: string | null
+          id?: string
+          questions?: Json
+          results_released?: boolean
+          sections?: string[]
+          status?: string
+          stream: string
+          subject: string
+          teacher_id: string
+          title: string
+        }
+        Update: {
+          bank_id?: string | null
+          closed_at?: string | null
+          created_at?: string
+          duration_sec?: number
+          given?: string | null
+          id?: string
+          questions?: Json
+          results_released?: boolean
+          sections?: string[]
+          status?: string
+          stream?: string
+          subject?: string
+          teacher_id?: string
+          title?: string
+        }
+        Relationships: []
+      }
       exam_attempts: {
         Row: {
           answers: Json
@@ -273,6 +324,72 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "school_roster"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      quiz_attempts: {
+        Row: {
+          answers: Json
+          blocked_at: string | null
+          current_question: number
+          deadline_at: string
+          id: string
+          last_seen_at: string | null
+          quiz_id: string
+          score: number | null
+          started_at: string
+          status: string
+          student_code: string
+          submitted_at: string | null
+          total: number | null
+          violations: number
+        }
+        Insert: {
+          answers?: Json
+          blocked_at?: string | null
+          current_question?: number
+          deadline_at: string
+          id?: string
+          last_seen_at?: string | null
+          quiz_id: string
+          score?: number | null
+          started_at?: string
+          status?: string
+          student_code: string
+          submitted_at?: string | null
+          total?: number | null
+          violations?: number
+        }
+        Update: {
+          answers?: Json
+          blocked_at?: string | null
+          current_question?: number
+          deadline_at?: string
+          id?: string
+          last_seen_at?: string | null
+          quiz_id?: string
+          score?: number | null
+          started_at?: string
+          status?: string
+          student_code?: string
+          submitted_at?: string | null
+          total?: number | null
+          violations?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quiz_attempts_quiz_id_fkey"
+            columns: ["quiz_id"]
+            isOneToOne: false
+            referencedRelation: "class_quizzes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quiz_attempts_student_code_fkey"
+            columns: ["student_code"]
+            isOneToOne: false
+            referencedRelation: "registered_students"
+            referencedColumns: ["student_code"]
           },
         ]
       }

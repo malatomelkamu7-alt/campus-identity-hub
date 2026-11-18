@@ -22,7 +22,7 @@ const questionSchema = z.object({
 });
 const FIGURE_BUCKET = "question-figures";
 /** Short-lived links to question pictures in private storage. */
-async function figureLinks(paths: (string | undefined)[]) {
+export async function figureLinks(paths: (string | undefined)[]) {
   const unique = [...new Set(paths.filter((p): p is string => !!p))];
   if (!unique.length) return {} as Record<string, string>;
   const sb = await admin();
@@ -281,7 +281,7 @@ export const directorReadmit = createServerFn({ method: "POST" })
   });
 
 /* ---------------- Teacher ---------------- */
-async function teacher(passcode: string, teacherId: string) {
+export async function teacher(passcode: string, teacherId: string) {
   requirePasscode(passcode, await staffPasscode("teacher", teacherId), "Teacher");
   const sb = await admin();
   const { data } = await sb.from("school_roster").select("id,full_name,subjects,stream").eq("id", teacherId).eq("kind", "teacher").maybeSingle();
@@ -373,7 +373,7 @@ export const teacherFigureUrls = createServerFn({ method: "POST" })
   });
 
 /* ---------------- Student exam ---------------- */
-async function student(who: { name: string; id: string; token: string }) {
+export async function student(who: { name: string; id: string; token: string }) {
   const sb = await admin();
   const { data } = await sb.from("registered_students").select("id,student_code,full_name,stream,grade,section,face_verified,session_token").eq("student_code", who.id.toUpperCase()).maybeSingle();
   if (!data || normalizeName(data.full_name) !== normalizeName(who.name)) throw new Error("Please sign in again.");

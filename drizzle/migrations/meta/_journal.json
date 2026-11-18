@@ -36,6 +36,13 @@
       "when": 1794884059030,
       "tag": "0004_practice_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794970961263,
+      "tag": "0005_class_quizzes",
+      "breakpoints": true
     }
   ]
 }
