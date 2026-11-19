@@ -1,11 +1,13 @@
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-3-flash-preview";
+/** Stronger model for the final one-to-one decision: the fast model confused different classmates. */
+const CONFIRM_MODEL = "google/gemini-2.5-pro";
 /** Registered photos compared per AI request; batches run in parallel so large schools stay fast. */
 const BATCH = 8;
 
 type Part = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
 
-async function ask(content: Part[]): Promise<Record<string, unknown>> {
+async function ask(content: Part[], model = MODEL): Promise<Record<string, unknown>> {
   const key = process.env["LOVABLE_API_KEY"];
   if (!key) throw new Error("Face verification is not configured.");
   let res: Response;
@@ -13,7 +15,7 @@ async function ask(content: Part[]): Promise<Record<string, unknown>> {
     res = await fetch(GATEWAY, {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Lovable-AIG-SDK": "fetch" },
-      body: JSON.stringify({ model: MODEL, messages: [{ role: "user", content }], response_format: { type: "json_object" } }),
+      body: JSON.stringify({ model, messages: [{ role: "user", content }], response_format: { type: "json_object" } }),
     });
   } catch (e) {
     console.error("Face check network error", e);
@@ -93,7 +95,7 @@ async function confirmSame(newPhoto: string, registered: string) {
     { type: "image_url", image_url: { url: a } },
     { type: "text", text: "Photo B:" },
     { type: "image_url", image_url: { url: b } },
-  ]).then(isSamePerson);
+  ], CONFIRM_MODEL).then(isSamePerson);
   const [x, y] = await Promise.all([one(newPhoto, registered), one(registered, newPhoto)]);
   return x && y;
 }
@@ -103,10 +105,10 @@ async function confirmSame(newPhoto: string, registered: string) {
  * Group screening finds candidates fast; a candidate only blocks registration
  * when two careful one-to-one checks both agree it is the same person.
  */
-export async function checkNotDuplicate(dataUrl: string, existing: string[]) {
+export async function checkNotDuplicate(dataUrl: string, existing: string[], labels: string[] = []) {
   const batches: string[][] = [];
   for (let i = 0; i < existing.length; i += BATCH) batches.push(existing.slice(i, i + BATCH));
-  const results = await Promise.all(batches.map(async (batch) => {
+  const results = await Promise.all(batches.map(async (batch, b) => {
     // Every photo gets a text label right before it, so the AI can never miscount positions.
     const r = await ask([
       { type: "text", text: `The photo labelled NEW is a student trying to register. The photos labelled R1 to R${batch.length} are students who are already registered. Is the person in NEW the same human being as the person in any R photo? Judge only by facial identity (face shape, eyes, nose, mouth), never by clothing, uniform, hairstyle, lighting or background; different people in the same school uniform are NOT a match. Reply only as json: {"match": "R1".."R${batch.length}" or null, "confidence": number between 0 and 1}.` },
@@ -119,7 +121,9 @@ export async function checkNotDuplicate(dataUrl: string, existing: string[]) {
     ]);
     const idx = screenMatch(r, batch.length);
     const match = idx === null ? undefined : batch[idx - 1];
-    return match ? confirmSame(dataUrl, match) : false;
+    const same = match ? await confirmSame(dataUrl, match) : false;
+    if (match) console.error(`Face screening candidate ${labels[b * BATCH + idx! - 1] ?? idx} confirmed=${same}`, JSON.stringify(r));
+    return same;
   }));
   if (results.some(Boolean)) throw new Error(DUPLICATE_MSG);
 }

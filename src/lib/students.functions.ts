@@ -64,10 +64,10 @@ export const registerStudent = createServerFn({ method: "POST" })
 
     const { checkUncovered, checkNotDuplicate } = await import("@/lib/face.server");
     await checkUncovered(data.photo);
-    const { data: others } = await sb.from("registered_students").select("photo_path").eq("face_verified", true).neq("student_code", record.id).neq("photo_path", "");
+    const { data: others } = await sb.from("registered_students").select("student_code,photo_path").eq("face_verified", true).neq("student_code", record.id).neq("photo_path", "");
     // Send registered photos as inline images: the AI never has to fetch private storage links.
-    const photos = (await Promise.all((others ?? []).map((o) => photoDataUrl(o.photo_path)))).filter((u): u is string => !!u);
-    await checkNotDuplicate(data.photo, photos);
+    const loaded = (await Promise.all((others ?? []).map(async (o) => ({ code: o.student_code, url: await photoDataUrl(o.photo_path) })))).filter((o): o is { code: string; url: string } => !!o.url);
+    await checkNotDuplicate(data.photo, loaded.map((o) => o.url), loaded.map((o) => o.code));
 
     const code = record.id; // official school ID, e.g. BH-12A-01
     const path = `${code}/${Date.now()}.jpg`;
